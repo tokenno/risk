@@ -41,9 +41,21 @@
       70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
       100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
     }
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1000;
+      background: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
   </style>
 </head>
 <body>
+  <div id="loading">Getting your location...</div>
   <button id="toggleBeacon">Beacon OFF</button>
   <div id="map"></div>
 
@@ -82,10 +94,11 @@
     let userMarker;
     let audioCtx;
     let localBeepInterval;
-    let pulseInterval;
+    let defaultZoom = 2;
+    let currentZoom = defaultZoom;
 
     // === Map ===
-    const map = L.map('map').setView([0, 0], 2); // Start with world view
+    const map = L.map('map').setView([0, 0], defaultZoom);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
@@ -97,15 +110,26 @@
       html: '<div style="background-color:red;width:100%;height:100%;border-radius:50%;"></div>'
     });
 
+    // Normal marker icon
+    const defaultIcon = L.icon({
+      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34]
+    });
+
     // === Button ===
     document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
 
     // === Location ===
     function initGeolocation() {
       if (!navigator.geolocation) {
-        console.error("Geolocation is not supported by your browser");
+        alert("Geolocation is not supported by your browser");
+        document.getElementById('loading').textContent = "Geolocation not supported";
         return;
       }
+
+      document.getElementById('loading').textContent = "Getting your location...";
 
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
@@ -113,22 +137,18 @@
           currentLon = pos.coords.longitude;
           console.log(`Position updated: ${currentLat}, ${currentLon}`);
 
+          // Remove loading message
+          document.getElementById('loading').style.display = 'none';
+
           if (!userMarker) {
             // Create initial marker
             userMarker = L.marker([currentLat, currentLon], {
-              icon: L.icon({
-                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34]
-              })
+              icon: defaultIcon
             }).addTo(map).bindPopup("You are here");
             
-            // Zoom to user location with a nice animation
-            map.flyTo([currentLat, currentLon], 16, {
-              animate: true,
-              duration: 1
-            });
+            // Zoom to user location
+            map.setView([currentLat, currentLon], 16);
+            currentZoom = 16;
           } else {
             userMarker.setLatLng([currentLat, currentLon]);
           }
@@ -146,8 +166,9 @@
         },
         (err) => {
           console.error("Geolocation error:", err);
+          document.getElementById('loading').textContent = "Error getting location: " + err.message;
         },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
       );
     }
 
@@ -192,23 +213,26 @@
       }
 
       if (beaconActive) {
-        // Zoom to user location when beacon is activated
+        // Zoom in when beacon is activated
         map.flyTo([currentLat, currentLon], 16, {
           animate: true,
           duration: 1
         });
+        currentZoom = 16;
         
         // Change to pulsing red dot
         userMarker.setIcon(pulseIcon);
         startLocalBeeping();
       } else {
+        // Zoom out when beacon is deactivated
+        map.flyTo([currentLat, currentLon], defaultZoom, {
+          animate: true,
+          duration: 1
+        });
+        currentZoom = defaultZoom;
+        
         // Change back to normal marker
-        userMarker.setIcon(L.icon({
-          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34]
-        }));
+        userMarker.setIcon(defaultIcon);
         stopLocalBeeping();
       }
     }
