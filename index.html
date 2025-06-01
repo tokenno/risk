@@ -138,6 +138,14 @@
       margin: 5px 0;
       color: #444;
     }
+    .flashing {
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
     @media (max-width: 600px) {
       #map {
         height: 25vh;
@@ -167,6 +175,7 @@
     <p>This app needs your location to work properly.</p>
     <p>Please allow location access in your browser settings.</p>
     <button id="retry-location">Retry</button>
+    <button id="use-default-location">Use Default Location</button>
   </div>
   <div id="name-container" style="display: none;">
     <input id="name-input" type="text" placeholder="Enter name...">
@@ -227,10 +236,12 @@
     let oscillator = null;
     let userId = null;
     let selectedRecipientId = null;
+    let watchId = null;
 
     const loadingMessage = document.getElementById('loading-message');
     const locationPermissionMessage = document.getElementById('location-permission-message');
     const retryLocationButton = document.getElementById('retry-location');
+    const defaultLocationButton = document.getElementById('use-default-location');
     const nameContainer = document.getElementById('name-container');
     const nameInput = document.getElementById('name-input');
     const setNameButton = document.getElementById('set-name-button');
@@ -257,7 +268,7 @@
         return false;
       }
       try {
-        map = L.map('map').setView([0, 0], 13);
+        map = L.map('map').setView([0, 0], 14);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '© OpenStreetMap'
         }).addTo(map);
@@ -269,9 +280,10 @@
         logDebug('Map initialized');
         return true;
       } catch (error) {
-        logDebug(`Map init error: ${error.message}`);
+        console.error('Map init error:', error);
         loadingMessage.textContent = 'Map failed to load.';
         loadingMessage.style.display = 'block';
+        logDebug(`Map init error: ${error.message}`);
         return false;
       }
     }
@@ -285,7 +297,7 @@
       }
       loadingMessage.textContent = 'Authenticating...';
       loadingMessage.style.display = 'block';
-      logDebug('Starting authentication');
+      logDebug('Authenticating');
       try {
         const userCredential = await signInAnonymously(auth);
         userId = userCredential.user.uid;
@@ -298,6 +310,7 @@
             await Promise.all(deletePromises);
             logDebug(`Reset ${snapshot.size} user docs`);
           } catch (error) {
+            console.error('Reset error:', error);
             logDebug(`Reset error: ${error.message}`);
           }
         }
@@ -313,52 +326,92 @@
           loadingMessage.style.display = 'block';
         }
       } catch (error) {
-        logDebug(`Auth error: ${error.code} - ${error.message}`);
+        console.error('Auth error:', error);
         loadingMessage.textContent = `Auth failed: ${error.message}`;
         loadingMessage.style.display = 'block';
+        logDebug(`Auth error: ${error.code} - ${error.message}`);
       }
     }
 
     tryAuthenticate();
 
     function requestLocation(attempt = 1, maxAttempts = 3) {
-      loadingMessage.textContent = 'Getting location...';
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        logDebug('Cleared previous watch');
+      }
+      loadingMessage.textContent = `Getting location (attempt ${attempt}/${maxAttempts})...`;
       loadingMessage.style.display = 'block';
       locationPermissionMessage.style.display = 'none';
       logDebug(`Requesting location, attempt ${attempt}`);
-      navigator.geolocation.watchPosition(
+
+      // Try getCurrentPosition first for quick response
+      navigator.geolocation.getCurrentPosition(
         position => {
           userPosition = [position.coords.latitude, position.coords.longitude];
-          loadingMessage.style.display = 'none';
-          refreshButton.style.display = 'block';
-          beaconButton.style.display = 'block';
-          map.style.display = 'block';
-          updateUserLocation();
-          if (map && userPosition) {
-            map.setView(userPosition, 15);
-            map.invalidateSize();
-            logDebug(`Map zoomed to: ${userPosition}, zoom 15`);
-          }
+          handleLocationSuccess();
         },
         error => {
-          logDebug(`Location error: ${error.message}, attempt ${attempt}/${maxAttempts}`);
-          loadingMessage.style.display = 'none';
-          locationPermissionMessage.style.display = 'block';
-          if (error.code === error.PERMISSION_DENIED) {
-            locationPermissionMessage.querySelector('p').textContent = 'Location access denied. Enable in settings.';
-          } else if (attempt < maxAttempts) {
-            setTimeout(() => requestLocation(attempt + 1, maxAttempts), 2000);
-          } else {
-            locationPermissionMessage.querySelector('p').textContent = 'Failed to get location. Check settings or network.';
-          }
+          handleLocationError(error, attempt, maxAttempts);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+
+      // Start watchPosition for continuous updates
+      watchId = navigator.geolocation.watchPosition(
+        position => {
+          userPosition = [position.coords.latitude, position.coords.longitude];
+          handleLocationSuccess();
+        },
+        error => {
+          handleLocationError(error, attempt, maxAttempts);
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
     }
 
+    function handleLocationSuccess() {
+      loadingMessage.style.display = 'none';
+      refreshButton.style.display = 'block';
+      beaconButton.style.display = 'block';
+      map.style.display = 'block';
+      updateUserLocation();
+      if (map && userPosition) {
+        map.setView(userPosition, 15);
+        map.invalidateSize();
+        logDebug(`Map zoomed to: ${userPosition}, zoom 15`);
+      }
+      if (beaconOn) {
+        fetchNearbyUsers();
+      }
+    }
+
+    function handleLocationError(error, attempt, maxAttempts) {
+      console.error('Location error:', error);
+      logDebug(`Location error: ${error.message}, attempt ${attempt}/${maxAttempts}`);
+      loadingMessage.style.display = 'none';
+      locationPermissionMessage.style.display = 'block';
+      if (error.code === error.PERMISSION_DENIED) {
+        locationPermissionMessage.querySelector('p').textContent = 'Location access denied. Please enable in browser settings.';
+      } else if (attempt < maxAttempts) {
+        setTimeout(() => requestLocation(attempt + 1, maxAttempts), 2000);
+      } else {
+        locationPermissionMessage.querySelector('p').textContent = `Failed to get location: ${error.message}. Try again or use default.`;
+      }
+    }
+
     retryLocationButton.addEventListener('click', () => {
       logDebug('Retry location clicked');
       requestLocation();
+    });
+
+    defaultLocationButton.addEventListener('click', () => {
+      logDebug('Using default location');
+      userPosition = [40.7128, -74.0]; // New York City
+      loadingMessage.style.display = 'none';
+      locationPermissionMessage.style.display = 'none';
+      handleLocationSuccess();
     });
 
     setNameButton.addEventListener('click', () => {
@@ -375,34 +428,37 @@
     });
 
     async function updateUserLocation() {
-      if (userPosition && userId && db && map) {
-        const hash = geofire.geohashForLocation(userPosition);
-        const name = nameInput.value.trim() || localStorage.getItem('userName') || `User_${userId.substring(0, 5)}`;
-        try {
-          await setDoc(doc(db, 'users', userId), {
-            location: new GeoPoint(userPosition[0], userPosition[1]),
-            geohash: hash,
-            beaconOn: beaconOn,
-            name: name,
-            timestamp: new Date()
-          });
-          localStorage.setItem('userName', name);
-          logDebug(`Updated user: ${name}, ${userPosition}`);
-        } catch (error) {
-          logDebug(`Firestore error: ${error.message}`);
-        }
-        if (userMarker) {
-          userMarker.setLatLng(userPosition);
-        } else {
-          userMarker = L.circleMarker(userPosition, {
-            color: 'red',
-            fillColor: 'red',
-            fillOpacity: 1,
-            radius: 10
-          }).addTo(map);
-          userMarker._path.classList.add('flashing');
-          logDebug(`Added flashing user marker: ${userPosition}`);
-        }
+      if (!userPosition || !userId || !db || !map) {
+        logDebug('Cannot update location: missing userPosition, userId, db, or map');
+        return;
+      }
+      const hash = geofire.geohashForLocation(userPosition);
+      const name = nameInput.value.trim() || localStorage.getItem('userName') || `User_${userId.substring(0, 5)}`;
+      try {
+        await setDoc(doc(db, 'users', userId), {
+          location: new GeoPoint(userPosition[0], userPosition[1]),
+          geohash: hash,
+          beaconOn: beaconOn,
+          name: name,
+          timestamp: new Date()
+        });
+        localStorage.setItem('userName', name);
+        logDebug(`Updated user: ${name}, ${userPosition}`);
+      } catch (error) {
+        console.error('Firestore error:', error);
+        logDebug(`Firestore error: ${error.message}`);
+      }
+      if (userMarker) {
+        userMarker.setLatLng(userPosition);
+      } else {
+        userMarker = L.circleMarker(userPosition, {
+          color: 'red',
+          fillColor: 'red',
+          fillOpacity: 1,
+          radius: 10
+        }).addTo(map);
+        userMarker._path.classList.add('flashing');
+        logDebug(`Added flashing user marker: ${userPosition}`);
       }
     }
 
@@ -410,10 +466,10 @@
       beaconOn = !beaconOn;
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
       beaconButton.style.background = beaconOn ? '#d32f2f' : '#1976d2';
-      updateUserLocation();
+      logDebug(`Beacon: ${beaconOn}`);
       if (beaconOn) {
+        requestLocation();
         startBeep();
-        fetchNearbyUsers();
         uiContainer.style.display = 'block';
         refreshButton.style.display = 'block';
         logDebug('UI container shown');
@@ -422,9 +478,14 @@
         uiContainer.style.display = 'none';
         refreshButton.style.display = 'none';
         messageList.innerHTML = '';
+        if (watchId) {
+          navigator.geolocation.clearWatch(watchId);
+          watchId = null;
+          logDebug('Stopped location watch');
+        }
         logDebug('UI container hidden');
       }
-      logDebug(`Beacon: ${beaconOn}`);
+      updateUserLocation();
     });
 
     refreshButton.addEventListener('click', () => {
@@ -437,7 +498,10 @@
     });
 
     async function fetchNearbyUsers() {
-      if (!userPosition || !beaconOn || !db) return;
+      if (!userPosition || !beaconOn || !db) {
+        logDebug('Cannot fetch nearby users: missing userPosition, beaconOn, or db');
+        return;
+      }
       const radiusInM = 1000;
       const bounds = geofire.geohashQueryBounds(userPosition, radiusInM);
       const promises = [];
@@ -475,18 +539,22 @@
         });
         logDebug(`Fetched ${nearbyUsers.length} nearby users`);
       } catch (error) {
+        console.error('Fetch nearby error: ${error}`);
         logDebug(`Fetch nearby error: ${error.message}`);
       }
     }
 
-    searchButton.addEventListener('click', async () => {
+    searchButton.addEventListener('click', () => {
       const searchTerm = searchInput.value.trim();
-      if (!searchTerm || !db) return;
+      if (!searchTerm || !db) {
+        log('Cannot search: missing term or db');
+        return;
+      }
       const q = query(collection(db, 'users'), orderBy('name'), startAt(searchTerm), endAt(searchTerm + '\uf8ff'));
       try {
-        const snapshot = await getDocs(q);
+        const results = await snapshot.getDocs(q);
         searchUsersList.innerHTML = '';
-        snapshot.forEach(doc => {
+        results.forEach(doc => {
           const data = doc.data();
           if (data.beaconOn && doc.id !== userId) {
             const li = document.createElement('li');
@@ -504,6 +572,7 @@
         });
         logDebug(`Searched users: ${searchTerm}`);
       } catch (error) {
+        console.error('Search error:', error);
         logDebug(`Search error: ${error.message}`);
       }
     });
@@ -522,13 +591,17 @@
           messageInput.value = '';
           logDebug('Message sent');
         } catch (error) {
+          console.error('Send message error:', error);
           logDebug(`Send message error: ${error.message}`);
         }
       }
     });
 
     function listenForMessages() {
-      if (!selectedRecipientId || !db) return;
+      if (!selectedRecipientId || !db) {
+        logDebug('Cannot listen for messages: missing recipient or db');
+        return;
+      }
       try {
         onSnapshot(collection(db, 'users', userId, 'messages'), snapshot => {
           if (!messageList.innerHTML) return;
@@ -543,9 +616,11 @@
           });
           messageList.scrollTop = messageList.scrollHeight;
         }, error => {
+          console.error('Messages error:', error);
           logDebug(`Messages error: ${error.message}`);
         });
       } catch (error) {
+        console.error('Snapshot error:', error);
         logDebug(`Snapshot error: ${error.message}`);
       }
     }
@@ -558,7 +633,8 @@
             audioContext.resume().catch(err => logDebug(`Audio resume error: ${err}`));
           }
         } catch (error) {
-          logDebug(`Audio init error: ${error}`);
+          console.error('Audio init error:', error);
+          logDebug(`Audio init error: ${error.message}`);
           return;
         }
       }
@@ -574,7 +650,10 @@
     }
 
     function updateBeep() {
-      if (!beaconOn || !audioContext || audioContext.state !== 'running') return;
+      if (!beaconOn || !audioContext || audioContext.state !== 'running') {
+        stopBeep();
+        return;
+      }
       const activeUsers = Object.values(otherUsers).filter(user => user.beaconOn && user.location);
       if (activeUsers.length === 0) {
         stopBeep();
@@ -604,7 +683,8 @@
           logDebug(`Beep started, frequency: ${frequency}`);
           setTimeout(updateBeep, 1000 / frequency);
         } catch (error) {
-          logDebug(`Beep error: ${error}`);
+          console.error('Beep error:', error);
+          logDebug(`Beep error: ${error.message}`);
           stopBeep();
         }
       } else {
@@ -645,10 +725,12 @@
             fetchNearbyUsers();
           }
         }, error => {
-          logDebug(`Users snapshot error: ${error}`);
+          console.error('Users snapshot error:', error);
+          logDebug(`Users snapshot error: ${error.message}`);
         });
       } catch (error) {
-        logDebug(`Snapshot setup error: ${error}`);
+        console.error('Snapshot setup error:', error);
+        logDebug(`Snapshot setup error: ${error.message}`);
       }
     }
   </script>
