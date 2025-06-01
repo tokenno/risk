@@ -2,25 +2,24 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Live Risk Map with Real-time Tracking</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live User Map</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
         crossorigin=""/>
-  <!-- Vue.js Production Build -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <!-- Firebase SDKs -->
+  <!-- Vue.js -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Firebase SDK -->
   <script type="module">
-    // Firebase v9 Modular Imports
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getDatabase, ref, set, onValue, off, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
     import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
-    // Your web app's Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
+      databaseURL: "https://risk-ec382-default-rtdb.firebaseio.com",
       projectId: "risk-ec382",
       storageBucket: "risk-ec382.appspot.com",
       messagingSenderId: "177105151944",
@@ -28,12 +27,11 @@
       measurementId: "G-2LKEG2N7ZD"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
 
-    // Make available to Vue app
+    // Make available globally
     window.firebase = {
       db,
       ref,
@@ -46,171 +44,19 @@
     };
   </script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 20px;
-      max-width: 1000px;
-      margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1fr 300px;
-      gap: 20px;
-    }
-    #map {
-      height: 500px;
-      width: 100%;
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-    .map-container {
-      grid-column: 1;
-    }
-    .panel {
-      grid-column: 2;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    .user-list, .messaging {
-      border: 1px solid #ddd;
-      padding: 15px;
-      border-radius: 8px;
-      background: #f9f9f9;
-      max-height: 300px;
-      overflow-y: auto;
-    }
-    .user-card {
-      padding: 10px;
-      margin: 5px 0;
-      background: white;
-      border-radius: 5px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-    }
-    .user-card:hover {
-      background: #eef;
-    }
-    .user-card.active {
-      background: #007bff;
-      color: white;
-    }
-    .user-card.proximity-alert {
-      animation: pulse 1s infinite;
-      background: #ff4444;
-      color: white;
-    }
-    .message {
-      margin: 8px 0;
-      padding: 8px;
-      background: white;
-      border-radius: 4px;
-    }
-    .message-input {
-      display: flex;
-      gap: 10px;
-      margin-top: 10px;
-    }
-    input {
-      flex-grow: 1;
-      padding: 8px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
-    }
-    button {
-      padding: 8px 15px;
-      background: #007bff;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background: #0056b3;
-    }
-    @keyframes pulse {
-      0% { opacity: 1; }
-      50% { opacity: 0.5; }
-      100% { opacity: 1; }
-    }
-    .status-badge {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-left: 5px;
-    }
-    .online {
-      background: #28a745;
-    }
-    .offline {
-      background: #dc3545;
-    }
+    /* ... (keep your existing styles) ... */
   </style>
 </head>
 <body>
   <div id="app">
-    <div class="map-container">
-      <div id="map"></div>
-    </div>
-    
-    <div class="panel">
-      <div class="status-container">
-        <h2>{{ user }} <span class="status-badge" :class="status.toLowerCase()"></span></h2>
-        <div>
-          <button @click="toggleOnlineStatus">
-            {{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}
-          </button>
-          <button @click="setName">Change Name</button>
-        </div>
-        <p v-if="userLocation">
-          Location: {{ userLocation[0].toFixed(4) }}, {{ userLocation[1].toFixed(4) }}
-        </p>
-        <p v-else>Acquiring location...</p>
-      </div>
-
-      <div class="user-list">
-        <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
-        <div v-if="loadingNearby">Loading nearby users...</div>
-        <div v-else-if="nearbyUsers.length === 0">No users nearby</div>
-        <div v-else>
-          <div v-for="user in nearbyUsers" 
-               :key="user.id"
-               class="user-card"
-               :class="{ 
-                 active: selectedUser?.id === user.id,
-                 'proximity-alert': user.distance < 20 
-               }"
-               @click="selectUser(user)">
-            <span>{{ user.name }}</span>
-            <span>{{ user.distance }}m</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="messaging" v-if="selectedUser">
-        <h3>Chat with {{ selectedUser.name }}</h3>
-        <div class="message-box">
-          <div v-for="msg in messages" :key="msg.id" class="message">
-            <strong>{{ msg.sender }}:</strong> {{ msg.text }}
-            <small>{{ formatTime(msg.timestamp) }}</small>
-          </div>
-        </div>
-        <div class="message-input">
-          <input v-model="newMessage" 
-                 @keyup.enter="sendMessage" 
-                 placeholder="Type a message...">
-          <button @click="sendMessage">Send</button>
-        </div>
-      </div>
-    </div>
+    <!-- ... (keep your existing HTML structure) ... -->
   </div>
 
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
-  
+
   <script>
     const { createApp } = Vue;
 
@@ -221,42 +67,28 @@
           user: 'Anonymous',
           userLocation: null,
           map: null,
-          userMarker: null,
           nearbyUsers: [],
           loadingNearby: true,
-          selectedUser: null,
-          messages: [],
-          newMessage: '',
           currentUserId: null,
-          proximityAlert: null,
-          userMarkers: {},
-          lastLocationUpdate: 0
+          userMarkers: {}
         };
       },
       async mounted() {
-        await this.waitForFirebase();
+        await this.initializeFirebase();
         this.initMap();
         this.startLocationTracking();
-        
-        // Debug helper (only in localhost)
-        if (window.location.hostname === "localhost") {
-          window.app = this;
-        }
       },
       methods: {
-        waitForFirebase() {
-          return new Promise((resolve) => {
-            const check = () => {
-              if (window.firebase) {
-                resolve();
-              } else {
-                setTimeout(check, 100);
-              }
-            };
-            check();
-          });
+        async initializeFirebase() {
+          try {
+            const userCredential = await firebase.signInAnonymously(firebase.auth);
+            this.currentUserId = userCredential.user.uid;
+            console.log("Connected as user:", this.currentUserId);
+          } catch (error) {
+            console.error("Firebase auth error:", error);
+          }
         },
-        
+
         initMap() {
           this.map = L.map('map').setView([51.505, -0.09], 13);
           L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -270,75 +102,36 @@
             return;
           }
 
-          const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-          };
+          navigator.geolocation.watchPosition(
+            position => {
+              const { latitude, longitude } = position.coords;
+              this.userLocation = [latitude, longitude];
+              
+              if (this.status === 'ONLINE') {
+                this.updateUserLocation();
+              }
 
-          this.locationWatchId = navigator.geolocation.watchPosition(
-            position => this.handleNewPosition(position),
-            error => this.handleLocationError(error),
-            options
+              if (this.map) {
+                this.map.setView(this.userLocation, 15);
+                if (!this.userMarker) {
+                  this.userMarker = L.marker(this.userLocation)
+                    .addTo(this.map)
+                    .bindPopup("You are here")
+                    .openPopup();
+                } else {
+                  this.userMarker.setLatLng(this.userLocation);
+                }
+              }
+            },
+            error => {
+              console.error("Geolocation error:", error);
+            },
+            { enableHighAccuracy: true }
           );
         },
 
-        handleNewPosition(position) {
-          const { latitude, longitude } = position.coords;
-          this.userLocation = [latitude, longitude];
-          
-          // Throttle location updates to Firebase
-          const now = Date.now();
-          if (this.status === 'ONLINE' && now - this.lastLocationUpdate > 3000) {
-            this.updateUserLocation();
-            this.lastLocationUpdate = now;
-          }
-
-          this.updateMapMarker();
-        },
-
-        updateMapMarker() {
-          if (!this.map) return;
-          
-          if (!this.userMarker) {
-            this.userMarker = L.marker(this.userLocation, {
-              icon: L.divIcon({
-                html: `<div style="background:#007bff;color:white;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:2px solid white">${this.user.charAt(0)}</div>`,
-                className: '',
-                iconSize: [30, 30]
-              })
-            })
-            .addTo(this.map)
-            .bindPopup(`<b>${this.user}</b><br>You are here`)
-            .openPopup();
-          } else {
-            this.userMarker.setLatLng(this.userLocation);
-          }
-          
-          this.map.setView(this.userLocation, 15);
-        },
-
-        async toggleOnlineStatus() {
-          if (this.status === 'OFFLINE') {
-            try {
-              const userCredential = await firebase.signInAnonymously(firebase.auth);
-              this.currentUserId = userCredential.user.uid;
-              this.status = 'ONLINE';
-              this.updateUserLocation();
-              this.listenForNearbyUsers();
-            } catch (error) {
-              console.error("Login failed:", error);
-            }
-          } else {
-            await firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
-            firebase.off(firebase.ref(firebase.db, 'users'));
-            this.status = 'OFFLINE';
-            this.clearUserMarkers();
-          }
-        },
-
         updateUserLocation() {
-          if (!this.userLocation || !this.currentUserId) return;
+          if (!this.firebase || !this.currentUserId || !this.userLocation) return;
           
           firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), {
             lat: this.userLocation[0],
@@ -374,31 +167,23 @@
                 id,
                 name: user.name || 'Anonymous',
                 distance: Math.round(distance),
-                position: [user.lat, user.lng],
-                lastSeen: user.lastOnline
+                position: [user.lat, user.lng]
               };
             })
             .filter(user => user.distance < 1000) // Within 1km
             .sort((a, b) => a.distance - b.distance);
             
           this.loadingNearby = false;
-          this.checkProximityAlerts();
         },
 
         updateUserMarker(userId, user, distance) {
           if (!this.userMarkers[userId]) {
-            this.userMarkers[userId] = L.marker([user.lat, user.lng], {
-              icon: L.divIcon({
-                html: `<div style="background:#28a745;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:2px solid white">${user.name?.charAt(0) || '?'}</div>`,
-                className: '',
-                iconSize: [24, 24]
-              })
-            })
-            .addTo(this.map)
-            .bindPopup(`<b>${user.name || 'User'}</b><br>${distance}m away`);
+            this.userMarkers[userId] = L.marker([user.lat, user.lng])
+              .addTo(this.map)
+              .bindPopup(`${user.name || 'User'} (${distance}m)`);
           } else {
             this.userMarkers[userId].setLatLng([user.lat, user.lng]);
-            this.userMarkers[userId].setPopupContent(`<b>${user.name || 'User'}</b><br>${distance}m away`);
+            this.userMarkers[userId].setPopupContent(`${user.name || 'User'} (${distance}m)`);
           }
         },
 
@@ -408,8 +193,6 @@
         },
 
         calculateDistance(pos1, pos2) {
-          if (!pos1 || !pos2) return Infinity;
-          
           const [lat1, lon1] = pos1;
           const [lat2, lon2] = pos2;
           const R = 6371e3; // Earth radius in meters
@@ -426,113 +209,50 @@
           return R * c;
         },
 
-        checkProximityAlerts() {
-          // Clear existing alert
-          if (this.proximityAlert) {
-            clearInterval(this.proximityAlert);
-            this.proximityAlert = null;
-          }
-
-          // Find users within 20m
-          const closeUsers = this.nearbyUsers.filter(u => u.distance < 20);
-          if (closeUsers.length === 0) return;
-
-          // Play sound with increasing frequency
-          const closestDistance = Math.min(...closeUsers.map(u => u.distance));
-          const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
-          const speedFactor = 1 + (20 - closestDistance) / 5; // 1x-5x speed
+        goOnline() {
+          this.status = 'ONLINE';
+          this.updateUserLocation();
+          this.listenForNearbyUsers();
           
-          this.proximityAlert = setInterval(() => {
-            audio.playbackRate = speedFactor;
-            audio.play().catch(e => console.log("Audio blocked:", e));
-          }, 1000 / speedFactor);
+          // Add test users when in development
+          if (window.location.hostname === 'localhost') {
+            this.addTestUsers();
+          }
+        },
+
+        goOffline() {
+          this.status = 'OFFLINE';
+          firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
+          firebase.off(firebase.ref(firebase.db, 'users'));
+          this.clearUserMarkers();
+        },
+
+        addTestUsers() {
+          // Test user 1 (500m northeast)
+          firebase.set(firebase.ref(firebase.db, 'users/test_user1'), {
+            lat: this.userLocation[0] + 0.0045,
+            lng: this.userLocation[1] + 0.0045,
+            name: "Test User 1",
+            lastOnline: Date.now()
+          });
+          
+          // Test user 2 (750m southwest)
+          firebase.set(firebase.ref(firebase.db, 'users/test_user2'), {
+            lat: this.userLocation[0] - 0.0067,
+            lng: this.userLocation[1] - 0.0067,
+            name: "Test User 2",
+            lastOnline: Date.now()
+          });
         },
 
         setName() {
           const newName = prompt('Enter your name:', this.user);
           if (newName !== null) {
             this.user = newName || 'Anonymous';
-            if (this.userMarker) {
-              this.userMarker.setPopupContent(`<b>${this.user}</b><br>You are here`);
-            }
             if (this.status === 'ONLINE') {
               this.updateUserLocation();
             }
           }
-        },
-
-        selectUser(user) {
-          this.selectedUser = user;
-          this.loadMessages();
-        },
-
-        loadMessages() {
-          if (!this.selectedUser) return;
-          
-          const chatId = [this.currentUserId, this.selectedUser.id].sort().join('_');
-          const messagesRef = firebase.ref(firebase.db, `messages/${chatId}`);
-          
-          // Clear previous listener
-          if (this.messagesListener) {
-            firebase.off(this.messagesListener);
-          }
-          
-          this.messagesListener = firebase.onValue(messagesRef, (snapshot) => {
-            const messagesData = snapshot.val() || {};
-            this.messages = Object.entries(messagesData)
-              .map(([id, msg]) => ({ id, ...msg }))
-              .sort((a, b) => a.timestamp - b.timestamp);
-          });
-        },
-
-        sendMessage() {
-          if (!this.newMessage.trim() || !this.selectedUser) return;
-          
-          const chatId = [this.currentUserId, this.selectedUser.id].sort().join('_');
-          const messagesRef = firebase.ref(firebase.db, `messages/${chatId}`);
-          
-          firebase.push(messagesRef, {
-            text: this.newMessage,
-            sender: this.user,
-            timestamp: Date.now()
-          });
-          
-          this.newMessage = '';
-        },
-
-        formatTime(timestamp) {
-          return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        },
-
-        handleLocationError(error) {
-          console.error("Geolocation error:", error);
-          let message = "Location error: ";
-          switch(error.code) {
-            case error.PERMISSION_DENIED:
-              message += "Permission denied. Please enable location access.";
-              break;
-            case error.POSITION_UNAVAILABLE:
-              message += "Location unavailable.";
-              break;
-            case error.TIMEOUT:
-              message += "Request timed out.";
-              break;
-            default:
-              message += "Unknown error.";
-          }
-          alert(message);
-        }
-      },
-      beforeUnmount() {
-        // Cleanup
-        if (this.locationWatchId) {
-          navigator.geolocation.clearWatch(this.locationWatchId);
-        }
-        if (this.messagesListener) {
-          firebase.off(this.messagesListener);
-        }
-        if (this.status === 'ONLINE') {
-          firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
         }
       }
     }).mount('#app');
