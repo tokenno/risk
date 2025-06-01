@@ -8,21 +8,35 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <!-- GeoFire for geohash queries -->
   <script src="https://unpkg.com/geofire-common@6.0.0/dist/index.min.js"></script>
-  <!-- Leaflet JS (loaded synchronously in global scope) -->
+  <!-- Leaflet JS (loaded synchronously) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
-    #map { height: 500px; width: 100%; }
-    #status { text-align: center; margin: 10px; }
-    #permission-message, #auth-error, #map-error { text-align: center; color: red; display: none; }
-    #retry-button, #beacon-button, #retry-auth-button, #retry-map-button, #set-name-button { display: block; margin: 10px auto; padding: 10px; }
-    .hidden { display: none; }
-    .flashing { animation: flash 1s infinite; }
-    @keyframes flash {
-      50% { opacity: 0; }
+    body { margin: 0; font-family: Arial, sans-serif; display: flex; flex-direction: column; height: 100vh; }
+    #map { flex: 1; min-height: 60vh; max-height: 60vh; width: 100%; }
+    #status, #auth-error, #map-error, #permission-message { text-align: center; margin: 5px; font-size: 14px; }
+    #auth-error, #map-error, #permission-message { color: red; display: none; }
+    #ui-container { flex: 0; overflow-y: auto; padding: 5px; }
+    #retry-button, #beacon-button, #retry-auth-button, #retry-map-button, #set-name-button, #search-button, #send-message, #refresh-button {
+      margin: 5px auto; padding: 8px 15px; font-size: 14px; min-width: 100px; touch-action: manipulation; border-radius: 4px;
     }
-    #nearby-users, #search-users { margin: 10px; }
-    #message-input, #search-input, #name-input { width: 80%; padding: 5px; }
-    #message-list { margin: 10px; max-height: 200px; overflow-y: auto; }
+    .hidden { display: none; }
+    .flashing { animation: pulse 1s infinite; }
+    @keyframes pulse {
+      50% { transform: scale(1.2); }
+    }
+    #nearby-users, #search-users { margin: 5px 0; }
+    #name-input { width: 150px; padding: 5px; margin: 5px auto; font-size: 14px; display: block; }
+    #search-input, #message-input { width: 80%; padding: 5px; margin: 5px auto; font-size: 14px; display: block; }
+    #message-list { margin: 5px 0; max-height: 100px; overflow-y: auto; font-size: 14px; }
+    #nearby-users-list, #search-users-list { list-style: none; padding: 0; }
+    #nearby-users-list li, #search-users-list li { margin: 3px 0; font-size: 14px; }
+    #nearby-users-list li button, #search-users-list li button { margin-left: 5px; padding: 5px 10px; font-size: 12px; }
+    @media (max-width: 600px) {
+      #map { min-height: 50vh; }
+      #ui-container { padding: 3px; }
+      button { padding: 6px 12px; font-size: 13px; }
+      #name-input { width: 120px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
@@ -34,37 +48,39 @@
   </div>
   <div id="map-error" class="hidden">
     <h2>Map Loading Error</h2>
-    <p>Failed to load the map. Please check your internet connection and try again.</p>
+    <p>Failed to load the map. Check your connection and retry.</p>
     <button id="retry-map-button">Retry Map</button>
   </div>
   <div id="permission-message" class="hidden">
     <h2>Location Permission Required</h2>
-    <p>This app needs your location to work properly.</p>
-    <p>Please allow location access in your browser settings.</p>
+    <p>Please allow location access in browser settings.</p>
     <button id="retry-button">Retry Location</button>
   </div>
-  <input id="name-input" type="text" placeholder="Enter your name..." class="hidden">
-  <button id="set-name-button" class="hidden">Set Name</button>
-  <button id="beacon-button" class="hidden">Beacon OFF</button>
-  <div id="search-users" class="hidden">
-    <h3>Search Users by Name</h3>
-    <input id="search-input" type="text" placeholder="Enter name to search...">
-    <button id="search-button">Search</button>
-    <ul id="search-users-list"></ul>
+  <div id="ui-container">
+    <input id="name-input" type="text" placeholder="Name..." class="hidden">
+    <button id="set-name-button" class="hidden">Set Name</button>
+    <button id="beacon-button" class="hidden">Beacon OFF</button>
+    <button id="refresh-button" class="hidden">Refresh Markers</button>
+    <div id="search-users" class="hidden">
+      <h3 style="font-size: 14px; margin: 5px 0;">Search Users</h3>
+      <input id="search-input" type="text" placeholder="Search name...">
+      <button id="search-button">Search</button>
+      <ul id="search-users-list"></ul>
+    </div>
+    <div id="nearby-users" class="hidden">
+      <h3 style="font-size: 14px; margin: 5px 0;">Nearby (1 km)</h3>
+      <ul id="nearby-users-list"></ul>
+    </div>
+    <div id="message-list"></div>
+    <input id="message-input" type="text" placeholder="Message..." class="hidden">
+    <button id="send-message" class="hidden">Send</button>
   </div>
-  <div id="nearby-users" class="hidden">
-    <h3>Nearby Users (within 1 km)</h3>
-    <ul id="nearby-users-list"></ul>
-  </div>
-  <div id="message-list"></div>
-  <input id="message-input" type="text" placeholder="Type a message..." class="hidden">
-  <button id="send-message" class="hidden">Send</button>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint, query, orderBy, startAt, endAt, getDocs, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint, query, orderBy, startAt, endAt, getDocs, where, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 
     // Firebase configuration
@@ -84,7 +100,7 @@
       app = initializeApp(firebaseConfig);
     } catch (error) {
       console.error('Firebase init error:', error);
-      alert('Failed to initialize Firebase. Check your configuration.');
+      alert('Failed to initialize Firebase. Check configuration.');
     }
     const db = app ? getFirestore(app) : null;
     const auth = app ? getAuth(app) : null;
@@ -99,6 +115,7 @@
     let oscillator = null;
     let userId = null;
     let selectedRecipientId = null;
+    let hasCenteredMap = false;
 
     // DOM elements
     const statusDiv = document.getElementById('status');
@@ -112,6 +129,7 @@
     const nameInput = document.getElementById('name-input');
     const setNameButton = document.getElementById('set-name-button');
     const beaconButton = document.getElementById('beacon-button');
+    const refreshButton = document.getElementById('refresh-button');
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
     const searchUsersList = document.getElementById('search-users-list');
@@ -132,6 +150,9 @@
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
       }).addTo(map);
+      map.invalidateSize();
+      window.addEventListener('resize', () => map.invalidateSize());
+      window.addEventListener('orientationchange', () => setTimeout(() => map.invalidateSize(), 100));
       return true;
     }
 
@@ -150,7 +171,8 @@
           userId = userCredential.user.uid;
           statusDiv.textContent = 'Authenticated. Initializing map...';
           if (initMap()) {
-            statusDiv.textContent = 'Authenticated. Enter your name...';
+            statusDiv.textContent = 'Enter your name...';
+            nameInput.value = localStorage.getItem('userName') || '';
             nameInput.className = '';
             setNameButton.className = '';
           }
@@ -164,7 +186,7 @@
             message += ' - Enable Anonymous Authentication in Firebase Console.';
           } else if (error.code === 'auth/network-request-failed') {
             message += ' - Check your internet connection.';
-            setTimeout(tryAuthenticate, 5000); // Retry after 5s
+            setTimeout(tryAuthenticate, 5000);
           } else if (error.code === 'auth/invalid-api-key' || error.code === 'auth/app-not-authorized') {
             message += ' - Verify your Firebase configuration.';
           }
@@ -195,10 +217,11 @@
           userPosition = [position.coords.latitude, position.coords.longitude];
           statusDiv.className = 'hidden';
           beaconButton.className = '';
+          refreshButton.className = '';
           updateUserLocation();
-          if (beaconOn) {
-            map.setView(userPosition, 15);
-            fetchNearbyUsers();
+          if (!hasCenteredMap && map) {
+            map.setView(userPosition, 13);
+            hasCenteredMap = true;
           }
         },
         error => {
@@ -212,7 +235,7 @@
 
     // Update user location with geohash
     async function updateUserLocation() {
-      if (userPosition && userId && db) {
+      if (userPosition && userId && db && map) {
         const hash = geofire.geohashForLocation(userPosition);
         const name = nameInput.value.trim() || localStorage.getItem('userName') || `User_${userId.substring(0, 5)}`;
         try {
@@ -229,16 +252,18 @@
         }
         if (userMarker) {
           userMarker.setLatLng(userPosition);
-        } else if (map) {
+        } else {
           userMarker = L.circleMarker(userPosition, {
             color: 'red',
+            fillColor: 'red',
+            fillOpacity: 1,
             radius: 10,
             className: beaconOn ? 'flashing' : ''
           }).addTo(map);
+          console.log('User marker added:', userPosition);
         }
-        if (beaconOn && map) {
+        if (beaconOn && userMarker) {
           userMarker.setStyle({ className: 'flashing' });
-          map.setView(userPosition, 15);
         } else if (userMarker) {
           userMarker.setStyle({ className: '' });
         }
@@ -270,7 +295,18 @@
         nearbyUsersList.parentElement.className = 'hidden';
         messageInput.className = 'hidden';
         sendMessageButton.className = 'hidden';
+        hasCenteredMap = false;
       }
+    });
+
+    // Refresh markers
+    refreshButton.addEventListener('click', () => {
+      Object.values(otherUsers).forEach(user => {
+        if (user.marker) map.removeLayer(user.marker);
+      });
+      otherUsers = {};
+      fetchNearbyUsers();
+      console.log('Markers refreshed');
     });
 
     // Retry location
@@ -310,7 +346,7 @@
           const li = document.createElement('li');
           li.textContent = `${user.name} (${Math.round(user.distance)}m)`;
           const msgButton = document.createElement('button');
-          msgButton.textContent = 'Message';
+          msgButton.textContent = 'Msg';
           msgButton.onclick = () => {
             selectedRecipientId = user.id;
             messageList.innerHTML = `<h3>Messages with ${user.name}</h3>`;
@@ -343,7 +379,7 @@
             const li = document.createElement('li');
             li.textContent = data.name;
             const msgButton = document.createElement('button');
-            msgButton.textContent = 'Message';
+            msgButton.textContent = 'Msg';
             msgButton.onclick = () => {
               selectedRecipientId = doc.id;
               messageList.innerHTML = `<h3>Messages with ${data.name}</h3>`;
@@ -399,7 +435,15 @@
     // Web Audio API for beep sound
     function startBeep() {
       if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(err => console.error('AudioContext resume error:', err));
+          }
+        } catch (error) {
+          console.error('AudioContext init error:', error);
+          return;
+        }
       }
       updateBeep();
     }
@@ -412,13 +456,16 @@
     }
 
     function updateBeep() {
-      if (!beaconOn || !audioContext) return;
+      if (!beaconOn || !audioContext || audioContext.state !== 'running') return;
+      const activeUsers = Object.values(otherUsers).filter(user => user.beaconOn && user.location);
+      if (activeUsers.length === 0) {
+        stopBeep();
+        return;
+      }
       let minDistance = Infinity;
-      Object.values(otherUsers).forEach(user => {
-        if (user.beaconOn && user.location) {
-          const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
-          if (distance < minDistance) minDistance = distance;
-        }
+      activeUsers.forEach(user => {
+        const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
+        if (distance < minDistance) minDistance = distance;
       });
       const maxDistance = 1000;
       const minFrequency = 0.5;
@@ -427,20 +474,20 @@
         ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
         : 0;
       if (frequency > 0) {
-        if (!oscillator) {
-          oscillator = audioContext.createOscillator();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-          oscillator.connect(audioContext.destination);
-          oscillator.start();
+        try {
+          if (!oscillator) {
+            oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+          }
+          oscillator.frequency.setValueAtTime(440 * frequency, audioContext.currentTime + 0.1);
+          setTimeout(updateBeep, 1000 / frequency);
+        } catch (error) {
+          console.error('Beep error:', error);
+          stopBeep();
         }
-        oscillator.stop(audioContext.currentTime + 0.1);
-        oscillator = audioContext.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-        oscillator.connect(audioContext.destination);
-        oscillator.start(audioContext.currentTime);
-        setTimeout(updateBeep, 1000 / frequency);
       } else {
         stopBeep();
       }
@@ -449,29 +496,35 @@
     // Listen for other users' locations
     if (db) {
       try {
-        onSnapshot(collection(db, 'users'), snapshot => {
+        onSnapshot(collection(db, 'users'), async snapshot => {
+          // Clear existing markers
+          Object.values(otherUsers).forEach(user => {
+            if (user.marker) map.removeLayer(user.marker);
+          });
+          otherUsers = {};
+          // Process current users
           snapshot.forEach(doc => {
             const data = doc.data();
             const id = doc.id;
             if (id === userId) return;
-            if (data.beaconOn && data.location) {
-              const latlng = [data.location.latitude, data.location.longitude];
-              if (otherUsers[id]) {
-                otherUsers[id].marker.setLatLng(latlng);
-                otherUsers[id].location = data.location;
-                otherUsers[id].beaconOn = data.beaconOn;
-              } else if (map) {
+            if (data.beaconOn && data.location && data.timestamp) {
+              const lastUpdate = data.timestamp.toDate();
+              const now = new Date();
+              const age = (now - lastUpdate) / 1000 / 60; // Age in minutes
+              if (age < 5) { // Only show users active in last 5 minutes
+                const latlng = [data.location.latitude, data.location.longitude];
                 otherUsers[id] = {
-                  marker: L.circleMarker(latlng, { color: 'blue', radius: 8 }).addTo(map),
+                  marker: L.circleMarker(latlng, { color: 'blue', fillColor: 'blue', fillOpacity: 1, radius: 8 }).addTo(map),
                   location: data.location,
-                  beaconOn: data.beaconOn
+                  beaconOn: true
                 };
+              } else {
+                // Clean up old documents
+                deleteDoc(doc.ref).catch(err => console.error('Delete old doc error:', err));
               }
-            } else if (otherUsers[id]) {
-              map.removeLayer(otherUsers[id].marker);
-              delete otherUsers[id];
             }
           });
+          console.log('Other users:', Object.keys(otherUsers));
           if (beaconOn) {
             updateBeep();
             fetchNearbyUsers();
