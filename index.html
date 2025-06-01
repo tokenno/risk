@@ -3,14 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Geolocation Map App</title>
+  <title>Geolocation Map App with User Presence</title>
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+        onerror="document.getElementById('map-error').style.display='block'; console.error('Failed to load Leaflet CSS');">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     #map { height: 400px; }
     .error-message { display: none; }
+    .online { color: green; }
+    .offline { color: red; }
   </style>
 </head>
 <body class="bg-gray-100 font-sans">
@@ -23,14 +26,14 @@
     <!-- Auth Error -->
     <div id="auth-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
       <p>Auth Error</p>
-      <p>Unable to authenticate.</p>
+      <p>Unable to authenticate. Check Firebase configuration.</p>
       <button id="auth-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
     </div>
 
     <!-- Map Error -->
     <div id="map-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
       <p>Map Error</p>
-      <p>Failed to load map.</p>
+      <p>Failed to load map or scripts. Check network or console for details.</p>
       <button id="map-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
     </div>
 
@@ -41,17 +44,24 @@
       <button id="location-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
     </div>
 
+    <!-- Firebase Config Error -->
+    <div id="config-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
+      <p>Configuration Error</p>
+      <p>Invalid Firebase configuration. Update firebaseConfig in index.html.</p>
+    </div>
+
     <!-- Main Content -->
     <div id="main-content" class="mt-4">
       <!-- Map Container -->
       <div id="map" class="w-full rounded shadow"></div>
 
-      <!-- Beacon and Search Section -->
+      <!-- Beacon and User Section -->
       <div class="mt-4">
         <div class="flex justify-between items-center">
           <span id="beacon-status" class="text-gray-700">Beacon OFF</span>
           <div>
-            <button id="set-name" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Set Name</button>
+            <button id="toggle-beacon" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Turn Beacon ON</button>
+            <button id="set-name" class="ml-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Set Name</button>
             <button id="refresh" class="ml-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Refresh</button>
           </div>
         </div>
@@ -61,9 +71,9 @@
         </div>
       </div>
 
-      <!-- Nearby Section -->
+      <!-- Nearby Users Section -->
       <div class="mt-4">
-        <h2 class="text-lg font-semibold">Nearby (1 km)</h2>
+        <h2 class="text-lg font-semibold">Nearby Users (1 km)</h2>
         <ul id="nearby-list" class="mt-2 space-y-2">
           <!-- Populated dynamically -->
         </ul>
@@ -74,12 +84,27 @@
     </div>
   </div>
 
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js" 
+          onerror="showError('map-error'); console.error('Failed to load Firebase App SDK');"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js" 
+          onerror="showError('auth-error'); console.error('Failed to load Firebase Auth SDK');"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database.js" 
+          onerror="showError('map-error'); console.error('Failed to load Firebase Database SDK');"></script>
   <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" 
+          onerror="showError('map-error'); console.error('Failed to load Leaflet JS');"></script>
   <script>
-    // Initialize map and geolocation
-    let map;
-    let userPosition = null;
+    // Firebase Configuration (Replace with your Firebase project config)
+    const firebaseConfig = {
+     apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
+  authDomain: "risk-ec382.firebaseapp.com",
+  projectId: "risk-ec382",
+  storageBucket: "risk-ec382.firebasestorage.app",
+  messagingSenderId: "177105151944",
+  appId: "1:177105151944:web:758b928eb83ccb894902fd",
+  measurementId: "G-2LKEG2N7ZD"
+    };
 
     // Show/hide error messages
     function showError(id) {
@@ -93,7 +118,40 @@
       document.getElementById('main-content').style.display = 'block';
     }
 
-    // Initialize geolocation and map
+    // Validate Firebase config
+    function isValidFirebaseConfig(config) {
+      return config.apiKey !== "YOUR_API_KEY" &&
+             config.authDomain !== "YOUR_AUTH_DOMAIN" &&
+             config.databaseURL !== "YOUR_DATABASE_URL" &&
+             config.projectId !== "YOUR_PROJECT_ID" &&
+             config.appId !== "YOUR_APP_ID";
+    }
+
+    let map;
+    let userPosition = null;
+    let currentUser = null;
+    let db, auth;
+
+    // Initialize Firebase
+    function initializeFirebase() {
+      try {
+        if (!isValidFirebaseConfig(firebaseConfig)) {
+          console.error('Invalid Firebase configuration');
+          showError('config-error');
+          return false;
+        }
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.database();
+        auth = firebase.auth();
+        return true;
+      } catch (error) {
+        console.error('Firebase initialization error:', error);
+        showError('auth-error');
+        return false;
+      }
+    }
+
+    // Initialize geolocation
     function initializeGeolocation() {
       showError('initializing');
       if ("geolocation" in navigator) {
@@ -103,11 +161,18 @@
               latitude: position.coords.latitude,
               longitude: position.coords.longitude
             };
+            if (currentUser && db) {
+              db.ref(`users/${currentUser.uid}`).update({
+                latitude: userPosition.latitude,
+                longitude: userPosition.longitude
+              }).catch(error => console.error('Failed to update location:', error));
+            }
             initMap();
             showMainContent();
             updateNearbyList();
           },
           (error) => {
+            console.error('Geolocation error:', error);
             if (error.code === error.PERMISSION_DENIED) {
               showError('location-error');
             } else {
@@ -121,6 +186,7 @@
           }
         );
       } else {
+        console.error('Geolocation not supported');
         showError('map-error');
       }
     }
@@ -128,46 +194,147 @@
     // Initialize Leaflet map
     function initMap() {
       try {
+        if (!window.L) throw new Error('Leaflet not loaded');
         map = L.map('map').setView([userPosition.latitude, userPosition.longitude], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(map);
         L.marker([userPosition.latitude, userPosition.longitude]).addTo(map)
           .bindPopup('You are here!').openPopup();
       } catch (e) {
+        console.error('Map initialization error:', e);
         showError('map-error');
       }
     }
 
-    // Update nearby list (placeholder)
+    // Initialize Firebase Authentication (Anonymous)
+    function initializeAuth() {
+      try {
+        if (!initializeFirebase()) return;
+        auth.signInAnonymously().catch((error) => {
+          console.error('Authentication error:', error);
+          showError('auth-error');
+        });
+        auth.onAuthStateChanged((user) => {
+          if (user) {
+            currentUser = user;
+            const userRef = db.ref(`users/${user.uid}`);
+            const connectedRef = db.ref('.info/connected');
+            connectedRef.on('value', (snapshot) => {
+              if (snapshot.val() === true) {
+                userRef.onDisconnect().set({
+                  name: currentUser.displayName || 'Anonymous',
+                  online: false,
+                  latitude: userPosition ? userPosition.latitude : null,
+                  longitude: userPosition ? userPosition.longitude : null
+                }).catch(error => console.error('Failed to set onDisconnect:', error));
+                userRef.set({
+                  name: currentUser.displayName || 'Anonymous',
+                  online: true,
+                  latitude: userPosition ? userPosition.latitude : null,
+                  longitude: userPosition ? userPosition.longitude : null
+                }).catch(error => console.error('Failed to set user data:', error));
+                document.getElementById('beacon-status').textContent = 'Beacon ON';
+                document.getElementById('toggle-beacon').textContent = 'Turn Beacon OFF';
+              }
+            });
+            initializeGeolocation();
+          } else {
+            console.error('No user authenticated');
+            showError('auth-error');
+          }
+        });
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        showError('auth-error');
+      }
+    }
+
+    // Toggle Beacon (online/offline status)
+    document.getElementById('toggle-beacon').addEventListener('click', () => {
+      if (currentUser && db) {
+        const userRef = db.ref(`users/${currentUser.uid}`);
+        userRef.once('value', (snapshot) => {
+          const isOnline = snapshot.val()?.online || false;
+          userRef.update({
+            online: !isOnline
+          }).then(() => {
+            document.getElementById('beacon-status').textContent = isOnline ? 'Beacon OFF' : 'Beacon ON';
+            document.getElementById('toggle-beacon').textContent = isOnline ? 'Turn Beacon ON' : 'Turn Beacon OFF';
+          }).catch(error => {
+            console.error('Failed to toggle beacon:', error);
+            showError('map-error');
+          });
+        }).catch(error => console.error('Failed to read user data:', error));
+      }
+    });
+
+    // Set Display Name
+    document.getElementById('set-name').addEventListener('click', () => {
+      if (currentUser && db) {
+        const newName = prompt('Enter your display name:');
+        if (newName) {
+          auth.currentUser.updateProfile({ displayName: newName }).then(() => {
+            db.ref(`users/${currentUser.uid}`).update({
+              name: newName
+            }).catch(error => console.error('Failed to update name:', error));
+          }).catch(error => console.error('Failed to update profile:', error));
+        }
+      }
+    });
+
+    // Update Nearby Users List
     function updateNearbyList() {
+      if (!db) return;
       const nearbyList = document.getElementById('nearby-list');
       nearbyList.innerHTML = '';
-      // Example: Add mock nearby locations within 1 km
-      const mockLocations = [
-        { name: 'Coffee Shop', distance: '0.5 km' },
-        { name: 'Park', distance: '0.8 km' }
-      ];
-      mockLocations.forEach(loc => {
-        const li = document.createElement('li');
-        li.className = 'p-2 bg-white rounded shadow';
-        li.textContent = `${loc.name} (${loc.distance})`;
-        nearbyList.appendChild(li);
+      db.ref('users').on('value', (snapshot) => {
+        nearbyList.innerHTML = '';
+        snapshot.forEach((childSnapshot) => {
+          const user = childSnapshot.val();
+          const uid = childSnapshot.key;
+          if (uid !== currentUser.uid && user.latitude && user.longitude && userPosition) {
+            const distance = calculateDistance(
+              userPosition.latitude,
+              userPosition.longitude,
+              user.latitude,
+              user.longitude
+            );
+            if (distance <= 1) {
+              const li = document.createElement('li');
+              li.className = 'p-2 bg-white rounded shadow';
+              li.innerHTML = `${user.name || 'Anonymous'} <span class="${user.online ? 'online' : 'offline'}">(${user.online ? 'Online' : 'Offline'})</span> (${distance.toFixed(2)} km)`;
+              nearbyList.appendChild(li);
+              if (window.L && map) {
+                L.marker([user.latitude, user.longitude]).addTo(map)
+                  .bindPopup(`${user.name || 'Anonymous'} (${user.online ? 'Online' : 'Offline'})`);
+              }
+            }
+          }
+        });
+      }, (error) => {
+        console.error('Failed to fetch users:', error);
+        showError('map-error');
       });
     }
 
-    // Event listeners for retry buttons
-    document.getElementById('auth-retry').addEventListener('click', initializeGeolocation);
+    // Haversine formula to calculate distance (in km)
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; // Earth's radius in km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    // Event listeners for other buttons
+    document.getElementById('auth-retry').addEventListener('click', initializeAuth);
     document.getElementById('map-retry').addEventListener('click', initializeGeolocation);
     document.getElementById('location-retry').addEventListener('click', initializeGeolocation);
-
-    // Placeholder for other buttons
-    document.getElementById('set-name').addEventListener('click', () => {
-      alert('Set Name functionality not implemented.');
-    });
-    document.getElementById('refresh').addEventListener('click', () => {
-      initializeGeolocation();
-    });
+    document.getElementById('refresh').addEventListener('click', initializeGeolocation);
     document.getElementById('search-btn').addEventListener('click', () => {
       const query = document.getElementById('search-input').value;
       alert(`Search for: ${query} (not implemented)`);
@@ -176,8 +343,13 @@
       alert('Send functionality not implemented.');
     });
 
-    // Start geolocation on load
-    initializeGeolocation();
+    // Start authentication and geolocation
+    try {
+      initializeAuth();
+    } catch (error) {
+      console.error('Startup error:', error);
+      showError('map-error');
+    }
   </script>
 </body>
 </html>
