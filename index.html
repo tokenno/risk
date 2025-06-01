@@ -3,441 +3,228 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Beacon Map Audio App</title>
-
-  <!-- Firebase -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
-
-  <!-- Leaflet CSS -->
+  <title>Meet with Sound</title>
+  <!-- Leaflet CSS for map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    #map { height: 100vh; width: 100vw; }
-    #toggleBeacon {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 1000;
-      padding: 10px 20px;
-      background: white;
-      border: 2px solid rgba(0,0,0,0.2);
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-      display: none; /* Hidden until location is found */
-    }
-    #toggleBeacon:hover {
-      background: #f1f1f1;
-    }
-    .beacon-on {
-      background: #ff4444;
-      color: white;
-    }
-    .pulse-icon {
-      border-radius: 50%;
-      animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
-      70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
-      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
-    }
-    #loading {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 1000;
-      background: white;
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-    }
-    #permissionPrompt {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 1001;
-      background: white;
-      padding: 20px;
-      border-radius: 5px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-      text-align: center;
-      display: none;
-    }
-    #permissionPrompt button {
-      margin: 10px;
-      padding: 8px 16px;
-      cursor: pointer;
+    #map { height: 500px; width: 100%; }
+    #status { text-align: center; margin: 10px; }
+    #permission-message { text-align: center; color: red; display: none; }
+    #retry-button, #beacon-button { display: block; margin: 10px auto; padding: 10px; }
+    .hidden { display: none; }
+    .flashing { animation: flash 1s infinite; }
+    @keyframes flash {
+      50% { opacity: 0; }
     }
   </style>
 </head>
 <body>
-  <div id="loading">Getting your location...</div>
-  <div id="permissionPrompt">
-    <h3>Location Permission Required</h3>
+  <div id="status">Getting your location...</div>
+  <div id="permission-message">
+    <h2>Location Permission Required</h2>
     <p>This app needs your location to work properly.</p>
     <p>Please allow location access in your browser settings.</p>
-    <button id="retryLocation">Retry Location</button>
+    <button id="retry-button">Retry Location</button>
   </div>
-  <button id="toggleBeacon">Beacon OFF</button>
+  <button id="beacon-button" class="hidden">Beacon OFF</button>
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
-  <script>
-    // === Firebase ===
+  <!-- Firebase Modular SDK -->
+  <script type="module">
+    // Import Firebase modules
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    
+    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
       projectId: "risk-ec382",
-      storageBucket: "risk-ec382.appspot.com",
+      storageBucket: "risk-ec382.firebasestorage.app",
       messagingSenderId: "177105151944",
       appId: "1:177105151944:web:758b928eb83ccb894902fd",
       measurementId: "G-2LKEG2N7ZD"
     };
-    
-    try {
-      firebase.initializeApp(firebaseConfig);
-      const db = firebase.firestore();
-      console.log("Firebase initialized successfully");
-    } catch (err) {
-      console.error("Firebase initialization error", err);
-    }
 
-    // === Globals ===
-    const userId = localStorage.getItem("anonUserId") || crypto.randomUUID();
-    localStorage.setItem("anonUserId", userId);
-    let watchId;
-    let beaconActive = false;
-    let currentLat = 0;
-    let currentLon = 0;
-    const markers = {};
-    const lastBeepTimestamps = {};
-    let userMarker;
-    let audioCtx;
-    let localBeepInterval;
-    let defaultZoom = 2;
-    let currentZoom = defaultZoom;
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-    // === Map ===
-    const map = L.map('map').setView([0, 0], defaultZoom);
+    // Leaflet JS for map
+    import 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+
+    // Map setup
+    const map = L.map('map').setView([0, 0], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Create a pulsing icon for the user's beacon
-    const pulseIcon = L.divIcon({
-      className: 'pulse-icon',
-      iconSize: [20, 20],
-      html: '<div style="background-color:red;width:100%;height:100%;border-radius:50%;"></div>'
-    });
+    // User location and marker
+    let userPosition = null;
+    let userMarker = null;
+    let otherUsers = {};
+    let beaconOn = false;
+    let audioContext = null;
+    let oscillator = null;
+    let userId = Math.random().toString(36).substring(2); // Simple random ID for demo
 
-    // Normal marker icon
-    const defaultIcon = L.icon({
-      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34]
-    });
+    // DOM elements
+    const statusDiv = document.getElementById('status');
+    const permissionMessage = document.getElementById('permission-message');
+    const retryButton = document.getElementById('retry-button');
+    const beaconButton = document.getElementById('beacon-button');
 
-    // === Button ===
-    document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
-    document.getElementById('retryLocation').addEventListener('click', initGeolocation);
-
-    // === Location ===
-    function initGeolocation() {
-      document.getElementById('permissionPrompt').style.display = 'none';
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('loading').textContent = "Getting your location...";
-
-      if (!navigator.geolocation) {
-        showLocationError("Geolocation is not supported by your browser");
-        return;
-      }
-
-      // Clear any existing watch
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-
-      watchId = navigator.geolocation.watchPosition(
-        async (pos) => {
-          currentLat = pos.coords.latitude;
-          currentLon = pos.coords.longitude;
-          console.log(`Position updated: ${currentLat}, ${currentLon}`);
-
-          // Hide loading message
-          document.getElementById('loading').style.display = 'none';
-          document.getElementById('toggleBeacon').style.display = 'block';
-
-          if (!userMarker) {
-            // Create initial marker
-            userMarker = L.marker([currentLat, currentLon], {
-              icon: defaultIcon
-            }).addTo(map).bindPopup("You are here");
-            
-            // Zoom to user location
-            map.setView([currentLat, currentLon], 16);
-            currentZoom = 16;
-          } else {
-            userMarker.setLatLng([currentLat, currentLon]);
-          }
-
-          try {
-            await db.collection("users").doc(userId).set({
-              lat: currentLat,
-              lon: currentLon,
-              beacon: beaconActive,
-              timestamp: firebase.firestore.FieldValue.serverTimestamp()
-            });
-          } catch (err) {
-            console.error("Failed to update user position:", err);
+    // Request location
+    function requestLocation() {
+      statusDiv.textContent = 'Getting your location...';
+      permissionMessage.style.display = 'none';
+      navigator.geolocation.watchPosition(
+        position => {
+          userPosition = [position.coords.latitude, position.coords.longitude];
+          statusDiv.className = 'hidden';
+          beaconButton.className = '';
+          updateUserLocation();
+          if (beaconOn) {
+            map.setView(userPosition, 15);
           }
         },
-        (err) => {
-          console.error("Geolocation error:", err);
-          showLocationError(getErrorMessage(err.code));
+        error => {
+          statusDiv.className = 'hidden';
+          permissionMessage.style.display = 'block';
+          console.error('Location error:', error);
         },
-        { 
-          enableHighAccuracy: true, 
-          maximumAge: 0, 
-          timeout: 10000 
-        }
+        { enableHighAccuracy: true }
       );
     }
 
-    function showLocationError(message) {
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('permissionPrompt').style.display = 'block';
-      document.getElementById('permissionPrompt').querySelector('p').textContent = message;
-    }
-
-    function getErrorMessage(errorCode) {
-      switch(errorCode) {
-        case 1: return "Permission denied. Please allow location access in your browser settings.";
-        case 2: return "Location unavailable. Please check your network connection or GPS.";
-        case 3: return "Location request timed out. Please try again.";
-        default: return "Error getting your location. Please try again.";
-      }
-    }
-
-    // === Toggle Beacon ===
-    async function toggleBeacon() {
-      // Initialize audio context on first interaction if needed
-      if (!audioCtx) {
-        try {
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-          console.log("AudioContext created");
-        } catch (err) {
-          console.error("AudioContext creation failed", err);
-          return;
-        }
-      }
-
-      // Ensure audio context is resumed
-      if (audioCtx.state === 'suspended') {
-        try {
-          await audioCtx.resume();
-          console.log("AudioContext resumed");
-        } catch (err) {
-          console.error("AudioContext resume failed", err);
-          return;
-        }
-      }
-
-      beaconActive = !beaconActive;
-      const button = document.getElementById('toggleBeacon');
-      button.textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
-      button.classList.toggle('beacon-on', beaconActive);
-
-      try {
-        await db.collection("users").doc(userId).set({
-          lat: currentLat,
-          lon: currentLon,
-          beacon: beaconActive,
-          timestamp: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-      } catch (err) {
-        console.error("Failed to update beacon status:", err);
-      }
-
-      if (beaconActive) {
-        // Zoom in when beacon is activated
-        map.flyTo([currentLat, currentLon], 16, {
-          animate: true,
-          duration: 1
+    // Update user location in Firebase and on map
+    async function updateUserLocation() {
+      if (userPosition) {
+        // Update Firebase
+        await setDoc(doc(db, 'users', userId), {
+          location: new GeoPoint(userPosition[0], userPosition[1]),
+          beaconOn: beaconOn,
+          timestamp: new Date()
         });
-        currentZoom = 16;
-        
-        // Change to pulsing red dot
-        userMarker.setIcon(pulseIcon);
-        startLocalBeeping();
-      } else {
-        // Zoom out when beacon is deactivated
-        map.flyTo([currentLat, currentLon], defaultZoom, {
-          animate: true,
-          duration: 1
-        });
-        currentZoom = defaultZoom;
-        
-        // Change back to normal marker
-        userMarker.setIcon(defaultIcon);
-        stopLocalBeeping();
-      }
-    }
 
-    function startLocalBeeping() {
-      if (localBeepInterval) clearInterval(localBeepInterval);
-      localBeepInterval = setInterval(() => playBeep(200, 0.2), 1000);
-    }
-
-    function stopLocalBeeping() {
-      if (localBeepInterval) {
-        clearInterval(localBeepInterval);
-        localBeepInterval = null;
-      }
-    }
-
-    function playBeep(freq, duration) {
-      if (!audioCtx) return;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(1, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-      osc.connect(gain).connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + duration);
-    }
-
-    // === Remote Detection ===
-    db.collection("users").onSnapshot(snapshot => {
-      snapshot.docChanges().forEach(change => {
-        const id = change.doc.id;
-        const data = change.doc.data();
-
-        if (id === userId) return;
-
-        if (change.type === 'removed') {
-          removeMarker(id);
-          return;
-        }
-
-        if (data.beacon) {
-          updateOrCreateMarker(id, data.lat, data.lon);
-          triggerSpatialBeep(id, data.lat, data.lon);
+        // Update or create user marker
+        if (userMarker) {
+          userMarker.setLatLng(userPosition);
         } else {
-          removeMarker(id);
+          userMarker = L.circleMarker(userPosition, {
+            color: 'red',
+            radius: 10,
+            className: beaconOn ? 'flashing' : ''
+          }).addTo(map);
+        }
+        if (beaconOn) {
+          userMarker.setStyle({ className: 'flashing' });
+          map.setView(userPosition, 15);
+        } else {
+          userMarker.setStyle({ className: '' });
+        }
+      }
+    }
+
+    // Toggle beacon
+    beaconButton.addEventListener('click', () => {
+      beaconOn = !beaconOn;
+      beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
+      updateUserLocation();
+      if (beaconOn) {
+        startBeep();
+      } else {
+        stopBeep();
+      }
+    });
+
+    // Retry location
+    retryButton.addEventListener('click', requestLocation);
+
+    // Web Audio API for beep sound
+    function startBeep() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      updateBeep();
+    }
+
+    function stopBeep() {
+      if (oscillator) {
+        oscillator.stop();
+        oscillator = null;
+      }
+    }
+
+    function updateBeep() {
+      if (!beaconOn || !audioContext) return;
+
+      // Find closest user
+      let minDistance = Infinity;
+      Object.values(otherUsers).forEach(user => {
+        if (user.beaconOn && user.location) {
+          const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
+          if (distance < minDistance) minDistance = distance;
         }
       });
-    }, err => {
-      console.error("Firestore snapshot error:", err);
-    });
 
-    function updateOrCreateMarker(id, lat, lon) {
-      if (!markers[id]) {
-        markers[id] = L.marker([lat, lon], {
-          icon: L.icon({
-            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-red.png',
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-            popupAnchor: [1, -34]
-          })
-        }).addTo(map).bindPopup(`User ${id.substring(0, 6)}`);
-      } else {
-        markers[id].setLatLng([lat, lon]);
-      }
-    }
+      // Adjust beep frequency based on distance (closer = faster)
+      const maxDistance = 1000; // Max distance for beep (1km)
+      const minFrequency = 0.5; // Beeps per second (farthest)
+      const maxFrequency = 5; // Beeps per second (closest)
+      let frequency = minDistance < maxDistance
+        ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
+        : 0;
 
-    function removeMarker(id) {
-      if (markers[id]) {
-        map.removeLayer(markers[id]);
-        delete markers[id];
-      }
-    }
-
-    function calculateDistance(lat1, lon1, lat2, lon2) {
-      const R = 6371e3; // meters
-      const φ1 = lat1 * Math.PI/180;
-      const φ2 = lat2 * Math.PI/180;
-      const Δφ = (lat2-lat1) * Math.PI/180;
-      const Δλ = (lon2-lon1) * Math.PI/180;
-
-      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                Math.cos(φ1) * Math.cos(φ2) *
-                Math.sin(Δλ/2) * Math.sin(Δλ/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-      return R * c;
-    }
-
-    function triggerSpatialBeep(id, lat, lon) {
-      if (!audioCtx || !beaconActive) return;
-
-      const now = Date.now();
-      if (lastBeepTimestamps[id] && now - lastBeepTimestamps[id] < 500) return;
-      lastBeepTimestamps[id] = now;
-
-      const distance = calculateDistance(currentLat, currentLon, lat, lon);
-      const maxDistance = 100; // meters
-      const minInterval = 200; // ms
-      const maxInterval = 2000; // ms
-
-      // Calculate beep interval based on distance
-      let interval = minInterval;
-      if (distance > maxDistance) {
-        interval = maxInterval;
-      } else {
-        interval = minInterval + (maxInterval - minInterval) * (distance / maxDistance);
-      }
-
-      // Create stereo panning effect
-      const angle = Math.atan2(lon - currentLon, lat - currentLat);
-      const panValue = Math.sin(angle);
-
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      const panner = audioCtx.createStereoPanner();
-
-      panner.pan.value = panValue;
-
-      // Higher frequency when closer
-      const baseFreq = 200;
-      const freq = baseFreq + (1000 - baseFreq) * (1 - Math.min(1, distance / maxDistance));
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-      gain.gain.setValueAtTime(1, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
-
-      osc.connect(gain).connect(panner).connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.2);
-    }
-
-    // Initialize everything when the page loads
-    window.addEventListener('load', () => {
-      initGeolocation();
-      
-      // Fallback in case browser doesn't prompt for permission
-      setTimeout(() => {
-        if (!userMarker && document.getElementById('loading').style.display !== 'none') {
-          showLocationError("Browser didn't request location permission. Please check your browser settings.");
+      if (frequency > 0) {
+        if (!oscillator) {
+          oscillator = audioContext.createOscillator();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+          oscillator.connect(audioContext.destination);
+          oscillator.start();
         }
-      }, 5000);
+        // Schedule beeps
+        oscillator.stop(audioContext.currentTime + 0.1);
+        oscillator = audioContext.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+        oscillator.connect(audioContext.destination);
+        oscillator.start(audioContext.currentTime);
+        setTimeout(updateBeep, 1000 / frequency);
+      } else {
+        stopBeep();
+      }
+    }
+
+    // Listen for other users' locations
+    onSnapshot(collection(db, 'users'), snapshot => {
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const id = doc.id;
+        if (id === userId) return;
+
+        if (data.beaconOn && data.location) {
+          const latlng = [data.location.latitude, data.location.longitude];
+          if (otherUsers[id]) {
+            otherUsers[id].marker.setLatLng(latlng);
+          } else {
+            otherUsers[id] = {
+              marker: L.circleMarker(latlng, { color: 'blue', radius: 8 }).addTo(map),
+              location: data.location,
+              beaconOn: data.beaconOn
+            };
+          }
+        } else if (otherUsers[id]) {
+          map.removeLayer(otherUsers[id].marker);
+          delete otherUsers[id];
+        }
+      });
+      if (beaconOn) updateBeep();
     });
 
-    window.addEventListener('beforeunload', async () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-      stopLocalBeeping();
-      try {
-        await db.collection("users").doc(userId).delete();
-      } catch (err) {
-        console.error("Failed to remove user:", err);
-      }
-    });
+    // Initial location request
+    requestLocation();
   </script>
 </body>
 </html>
