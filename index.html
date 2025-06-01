@@ -12,11 +12,22 @@
     #permission-message { text-align: center; color: red; display: none; }
     #retry-button, #beacon-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
-    .flashing { animation: flash 1s infinite; }
-    @keyframes flash { 50% { opacity: 0; } }
     #nearby-users { margin: 10px; }
     #message-input { width: 80%; padding: 5px; }
     #message-list { margin: 10px; max-height: 200px; overflow-y: auto; }
+    /* Blinking effect for your position */
+    .blinking-dot {
+      width: 18px;
+      height: 18px;
+      background: red;
+      border-radius: 50%;
+      border: 2px solid white;
+      position: relative;
+    }
+    .blinking-marker .blinking-dot {
+      animation: flash 1s infinite;
+    }
+    @keyframes flash { 50% { opacity: 0; } }
   </style>
 </head>
 <body>
@@ -119,22 +130,27 @@
           name: `User_${userId.substring(0, 5)}`,
           timestamp: new Date()
         });
+
+        // Create or update blinking marker for the user
         if (userMarker) {
           userMarker.setLatLng(userPosition);
+          userMarker.setIcon(L.divIcon({
+            className: beaconOn ? 'blinking-marker' : '',
+            iconSize: [20, 20],
+            html: '<div class="blinking-dot"></div>',
+          }));
         } else {
-          userMarker = L.circleMarker(userPosition, {
-            color: 'red',
-            radius: 10
+          userMarker = L.marker(userPosition, {
+            icon: L.divIcon({
+              className: beaconOn ? 'blinking-marker' : '',
+              iconSize: [20, 20],
+              html: '<div class="blinking-dot"></div>',
+            })
           }).addTo(map);
         }
-        const markerElement = userMarker.getElement();
-        if (markerElement) {
-          if (beaconOn) {
-            markerElement.classList.add('flashing');
-            map.setView(userPosition, 15);
-          } else {
-            markerElement.classList.remove('flashing');
-          }
+        // Zoom in whenever Beacon is ON and location is updated
+        if (beaconOn && userPosition) {
+          map.setView(userPosition, 15);
         }
       }
     }
@@ -144,6 +160,7 @@
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
       updateUserLocation();
       if (beaconOn) {
+        if (userPosition) map.setView(userPosition, 15); // Zoom in immediately on Beacon ON
         fetchNearbyUsers();
         nearbyUsersList.parentElement.className = '';
         messageInput.className = '';
