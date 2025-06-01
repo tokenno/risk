@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Meet with Sound</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- GeoFire for geohash queries -->
+  <script src="https://unpkg.com/geofire-common@6.0.0/dist/index.min.js"></script>
+  <!-- Leaflet JS (synchronous) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      display: -webkit-flex;
+      flex-direction: column;
+      -webkit-flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #map {
+      flex: 1;
+      -webkit-flex: 1;
+      min-height: 30vh;
+      max-height: 30vh;
+      width: 100%;
+    }
+    #status, #auth-error, #map-error, #permission-message {
+      text-align: center;
+      margin: 2px;
+      font-size: 12px;
+    }
+    #auth-error, #map-error, #permission-message {
+      color: red;
+      display: none;
+    }
+    #ui-container {
+      flex: 0 1 auto;
+      -webkit-flex: 0 1 auto;
+      overflow-y: auto;
+      padding: 2px;
+      max-height: calc(100vh - 30vh - 20px);
+    }
+    #retry-button, #beacon-button, #retry-auth-button, #retry-map-button, #set-name-button, #search-button, #send-message, #refresh-button {
+      display: block;
+      margin: 2px auto;
+      padding: 5px 10px;
+      font-size: 12px;
+      min-width: 70px;
+      touch-action: manipulation;
+      -webkit-touch-action: manipulation;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .hidden { display: none !important; }
+    .flashing {
+      animation: pulse 1s infinite;
+      -webkit-animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.3); }
+      100% { transform: scale(1); }
+    }
+    @-webkit-keyframes pulse {
+      0% { -webkit-transform: scale(1); }
+      50% { -webkit-transform: scale(1.3); }
+      100% { -webkit-transform: scale(1); }
+    }
+    #nearby-users, #search-users {
+      margin: 2px 0;
+    }
+    #name-input {
+      width: 100px;
+      padding: 3px;
+      margin: 2px auto;
+      font-size: 12px;
+      display: block;
+    }
+    #search-input, #message-input {
+      width: 90%;
+      padding: 3px;
+      margin: 2px auto;
+      font-size: 12px;
+      display: block;
+    }
+    #message-list {
+      margin: 2px 0;
+      max-height: 60px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    #nearby-users-list, #search-users-list {
+      list-style: none;
+      padding: 0;
+      margin: 2px 0;
+    }
+    #nearby-users-list li, #search-users-list li {
+      margin: 1px 0;
+      font-size: 12px;
+    }
+    #nearby-users-list li button, #search-users-list li button {
+      margin-left: 3px;
+      padding: 3px 6px;
+      font-size: 11px;
+    }
+    h3 {
+      font-size: 12px;
+      margin: 2px 0;
+    }
+    @media (max-width: 600px) {
+      #map {
+        min-height: 25vh;
+        max-height: 25vh;
+      }
+      #ui-container {
+        padding: 1px;
+        max-height: calc(100vh - 25vh - 20px);
+      }
+      button {
+        padding: 4px 8px;
+        font-size: 11px;
+      }
+      #name-input {
+        width: 90px;
+        font-size: 11px;
+      }
+      #search-input, #message-input {
+        font-size: 11px;
+      }
+      #message-list {
+        max-height: 50px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="status">Initializing...</div>
+  <div id="auth-error" class="hidden">
+    <h2>Auth Error</h2>
+    <p id="auth-error-message">Unable to authenticate.</p>
+    <button id="retry-auth-button">Retry</button>
+  </div>
+  <div id="map-error" class="hidden">
+    <h2>Map Error</h2>
+    <p id="map-error-message">Failed to load map.</p>
+    <button id="retry-map-button">Retry</button>
+  </div>
+  <div id="permission-message" class="hidden">
+    <h2>Location Required</h2>
+    <p>Allow location access in settings.</p>
+    <button id="retry-button">Retry</button>
+  </div>
+  <div id="ui-container">
+    <button id="beacon-button" class="hidden">Beacon OFF</button>
+    <input id="name-input" type="text" placeholder="Name..." class="hidden">
+    <button id="set-name-button" class="hidden">Set Name</button>
+    <button id="refresh-button" class="hidden">Refresh</button>
+    <div id="search-users" class="hidden">
+      <h3>Search</h3>
+      <input id="search-input" type="text" placeholder="Search name...">
+      <button id="search-button">Search</button>
+      <ul id="search-users-list"></ul>
+    </div>
+    <div id="nearby-users" class="hidden">
+      <h3>Nearby (1 km)</h3>
+      <ul id="nearby-users-list"></ul>
+    </div>
+    <div id="message-list"></div>
+    <input id="message-input" type="text" placeholder="Message..." class="hidden">
+    <button id="send-message" class="hidden">Send</button>
+  </div>
+  <div id="map"></div>
+
+  <!-- Firebase Modular SDK -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint, query, orderBy, startAt, endAt, getDocs, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+
+    // Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
+      authDomain: "risk-ec382.firebaseapp.com",
+      projectId: "risk-ec382",
+      storageBucket: "risk-ec382.firebasestorage.app",
+      messagingSenderId: "177105151944",
+      appId: "1:177105151944:web:758b928eb83ccb894902fd",
+      measurementId: "G-2LKEG2N7ZD"
+    };
+
+    // Initialize Firebase
+    let app, db, auth;
+    try {
+      app = initializeApp(firebaseConfig);
+      db = getFirestore(app);
+      auth = getAuth(app);
+    } catch (error) {
+      console.error('Firebase init error:', error);
+      alert('Firebase init failed.');
+      document.getElementById('status').textContent = 'Error: Firebase failed.';
+    }
+
+    // User data
+    let userPosition = null;
+    let userMarker = null;
+    let map = null;
+    let otherUsers = {};
+    let beaconOn = false;
+    let audioContext = null;
+    let oscillator = null;
+    let userId = null;
+    let selectedRecipientId = null;
+
+    // DOM elements
+    const statusDiv = document.getElementById('status');
+    const authErrorDiv = document.getElementById('auth-error');
+    const authErrorMessage = document.getElementById('auth-error-message');
+    const mapErrorDiv = document.getElementById('map-error');
+    const mapErrorMessage = document.getElementById('map-error-message');
+    const retryAuthButton = document.getElementById('retry-auth-button');
+    const retryMapButton = document.getElementById('retry-map-button');
+    const permissionMessage = document.getElementById('permission-message');
+    const retryButton = document.getElementById('retry-button');
+    const nameInput = document.getElementById('name-input');
+    const setNameButton = document.getElementById('set-name-button');
+    const beaconButton = document.getElementById('beacon-button');
+    const refreshButton = document.getElementById('refresh-button');
+    const searchInput = document.getElementById('search-input');
+    const searchButton = document.getElementById('search-button');
+    const searchUsersList = document.getElementById('search-users-list');
+    const nearbyUsersList = document.getElementById('nearby-users-list');
+    const messageInput = document.getElementById('message-input');
+    const sendMessageButton = document.getElementById('send-message');
+    const messageList = document.getElementById('message-list');
+
+    // Debug log
+    function logDebug(msg) {
+      console.log(`${new Date().toLocaleTimeString()}: ${msg}`);
+    }
+
+    // Initialize map
+    async function initMap(attempt = 1, maxAttempts = 5) {
+      if (typeof L !== 'undefined') {
+        try {
+          map = L.map('map').setView([0, 0], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(map);
+          map.invalidateSize();
+          window.addEventListener('resize', () => map.invalidateSize());
+          window.addEventListener('orientationchange', () => setTimeout(() => map.invalidateSize(), 100));
+          if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+              map.invalidateSize();
+              const uiContainer = document.getElementById('ui-container');
+              const mapHeight = map.getContainer().offsetHeight;
+              uiContainer.style.maxHeight = `${window.visualViewport.height - mapHeight - 20}px`;
+              logDebug(`Viewport resized: ui max-height=${uiContainer.style.maxHeight}`);
+            });
+          }
+          logDebug('Map initialized');
+          return true;
+        } catch (error) {
+          logDebug(`Map init error: ${error.message}`);
+          mapErrorDiv.className = '';
+          mapErrorMessage.textContent = `Map failed: ${error.message}`;
+          return false;
+        }
+      } else if (attempt <= maxAttempts) {
+        logDebug(`Leaflet not loaded, retry ${attempt}/${maxAttempts}`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return initMap(attempt + 1, maxAttempts);
+      } else {
+        logDebug('Leaflet failed to load');
+        statusDiv.className = 'hidden';
+        mapErrorDiv.className = '';
+        mapErrorMessage.textContent = 'Failed to load map. Check connection.';
+        return false;
+      }
+    }
+
+    // Authenticate anonymously
+    async function tryAuthenticate() {
+      if (!auth) {
+        statusDiv.className = 'hidden';
+        authErrorDiv.className = '';
+        authErrorMessage.textContent = 'Firebase not initialized.';
+        logDebug('Auth failed: no auth object');
+        return;
+      }
+      statusDiv.textContent = 'Authenticating...';
+      authErrorDiv.className = 'hidden';
+      try {
+        const userCredential = await signInAnonymously(auth);
+        userId = userCredential.user.uid;
+        logDebug(`Authenticated: ${userId}`);
+        statusDiv.textContent = 'Loading map...';
+        if (await initMap()) {
+          statusDiv.textContent = 'Enter your name...';
+          nameInput.value = localStorage.getItem('userName') || '';
+          nameInput.className = '';
+          setNameButton.className = '';
+          beaconButton.className = '';
+          logDebug('Beacon button shown');
+        } else {
+          statusDiv.className = 'hidden';
+          mapErrorDiv.className = '';
+        }
+      } catch (error) {
+        logDebug(`Auth error: ${error.code} - ${error.message}`);
+        statusDiv.className = 'hidden';
+        authErrorDiv.className = '';
+        let message = `Auth failed: ${error.message} (${error.code})`;
+        if (error.code === 'auth/operation-not-allowed') message += ' - Enable Anonymous Auth.';
+        else if (error.code === 'auth/network-request-failed') {
+          message += ' - Check internet.';
+          setTimeout(tryAuthenticate, 5000);
+        } else if (error.code === 'auth/invalid-api-key') message += ' - Check Firebase config.';
+        authErrorMessage.textContent = message;
+        alert(`Auth error: ${error.code}`);
+      }
+    }
+
+    retryAuthButton.addEventListener('click', tryAuthenticate);
+    retryMapButton.addEventListener('click', async () => {
+      mapErrorDiv.className = 'hidden';
+      statusDiv.className = '';
+      statusDiv.textContent = 'Loading map...';
+      if (await initMap()) tryAuthenticate();
+    });
+
+    // Wait for Leaflet to load
+    if (typeof L !== 'undefined') {
+      tryAuthenticate();
+    } else {
+      const leafletScript = document.querySelector('script[src*="leaflet"]');
+      if (leafletScript) {
+        leafletScript.addEventListener('load', () => {
+          logDebug('Leaflet loaded');
+          tryAuthenticate();
+        });
+        leafletScript.addEventListener('error', () => {
+          logDebug('Leaflet script failed');
+          statusDiv.className = 'hidden';
+          mapErrorDiv.className = '';
+          mapErrorMessage.textContent = 'Failed to load map. Check connection.';
+        });
+      } else {
+        logDebug('Leaflet script tag missing');
+        statusDiv.className = 'hidden';
+        mapErrorDiv.className = '';
+        mapErrorMessage.textContent = 'Map library not found.';
+      }
+    }
+
+    // Request location with retries
+    function requestLocation(attempt = 1, maxAttempts = 3) {
+      statusDiv.textContent = 'Getting location...';
+      permissionMessage.style.display = 'none';
+      searchUsersList.parentElement.className = '';
+      navigator.geolocation.watchPosition(
+        position => {
+          userPosition = [position.coords.latitude, position.coords.longitude];
+          statusDiv.className = 'hidden';
+          refreshButton.className = '';
+          updateUserLocation();
+          if (map && userPosition) {
+            map.setView(userPosition, 15); // Always zoom to position
+            logDebug(`Map zoomed to: ${userPosition}, zoom 15`);
+          }
+        },
+        error => {
+          logDebug(`Location error: ${error.message}, attempt ${attempt}/${maxAttempts}`);
+          statusDiv.className = 'hidden';
+          permissionMessage.style.display = 'block';
+          if (error.code === error.PERMISSION_DENIED) {
+            permissionMessage.querySelector('p').textContent = 'Location access denied. Enable in settings.';
+          } else if (attempt < maxAttempts) {
+            setTimeout(() => requestLocation(attempt + 1, maxAttempts), 2000);
+          } else {
+            permissionMessage.querySelector('p').textContent = 'Failed to get location. Check settings or network.';
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    // Update user location
+    async function updateUserLocation() {
+      if (userPosition && userId && db && map) {
+        const hash = geofire.geohashForLocation(userPosition);
+        const name = nameInput.value.trim() || localStorage.getItem('userName') || `User_${userId.substring(0, 5)}`;
+        try {
+          await setDoc(doc(db, 'users', userId), {
+            location: new GeoPoint(userPosition[0], userPosition[1]),
+            geohash: hash,
+            beaconOn: beaconOn,
+            name: name,
+            timestamp: new Date()
+          });
+          localStorage.setItem('userName', name);
+          logDebug(`Updated user: ${name}, ${userPosition}`);
+        } catch (error) {
+          logDebug(`Firestore error: ${error.message}`);
+        }
+        if (userMarker) {
+          userMarker.setLatLng(userPosition);
+        } else {
+          userMarker = L.circleMarker(userPosition, {
+            color: 'red',
+            fillColor: 'red',
+            fillOpacity: 1,
+            radius: 10,
+            className: 'flashing' // Always flashing
+          }).addTo(map);
+          logDebug(`Added flashing user marker: ${userPosition}`);
+        }
+        userMarker.setStyle({ className: 'flashing' }); // Ensure flashing
+      }
+    }
+
+    // Set name
+    setNameButton.addEventListener('click', () => {
+      updateUserLocation();
+      nameInput.className = 'hidden';
+      setNameButton.className = 'hidden';
+      requestLocation();
+    });
+
+    // Toggle beacon
+    beaconButton.addEventListener('click', () => {
+      beaconOn = !beaconOn;
+      beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
+      updateUserLocation();
+      if (beaconOn) {
+        startBeep();
+        fetchNearbyUsers();
+        nearbyUsersList.parentElement.className = '';
+        messageInput.className = '';
+        sendMessageButton.className = '';
+      } else {
+        stopBeep();
+        nearbyUsersList.innerHTML = '';
+        nearbyUsersList.parentElement.className = 'hidden';
+        messageInput.className = 'hidden';
+        sendMessageButton.className = 'hidden';
+      }
+      logDebug(`Beacon: ${beaconOn}`);
+    });
+
+    // Refresh markers
+    refreshButton.addEventListener('click', () => {
+      Object.values(otherUsers).forEach(user => {
+        if (user.marker) map.removeLayer(user.marker);
+      });
+      otherUsers = {};
+      fetchNearbyUsers();
+      logDebug('Markers refreshed');
+    });
+
+    // Retry location
+    retryButton.addEventListener('click', () => requestLocation());
+
+    // Fetch nearby users (1 km)
+    async function fetchNearbyUsers() {
+      if (!userPosition || !beaconOn || !db) return;
+      const radiusInM = 1000;
+      const bounds = geofire.geohashQueryBounds(userPosition, radiusInM);
+      const promises = [];
+      for (const b of bounds) {
+        const q = query(collection(db, 'users'), orderBy('geohash'), startAt(b[0]), endAt(b[1]));
+        promises.push(getDocs(q));
+      }
+      try {
+        const snapshots = await Promise.all(promises);
+        nearbyUsersList.innerHTML = '';
+        const nearbyUsers = [];
+        for (const snap of snapshots) {
+          for (const doc of snap.docs) {
+            const data = doc.data();
+            if (data.beaconOn && data.location) {
+              const distance = geofire.distanceBetween([data.location.latitude, data.location.longitude], userPosition) * 1000;
+              if (distance <= radiusInM) {
+                nearbyUsers.push({ id: doc.id, name: data.name, distance });
+              }
+            }
+          }
+        }
+        nearbyUsers.forEach(user => {
+          const li = document.createElement('li');
+          li.textContent = `${user.name} (${Math.round(user.distance)}m)`;
+          const msgButton = document.createElement('button');
+          msgButton.textContent = 'Msg';
+          msgButton.onclick = () => {
+            selectedRecipientId = user.id;
+            messageList.innerHTML = `<h3>Messages with ${user.name}</h3>`;
+            listenForMessages();
+          };
+          li.appendChild(msgButton);
+          nearbyUsersList.appendChild(li);
+        });
+        logDebug(`Fetched ${nearbyUsers.length} nearby users`);
+      } catch (error) {
+        logDebug(`Fetch nearby error: ${error.message}`);
+      }
+    }
+
+    // Search users by name
+    searchButton.addEventListener('click', async () => {
+      const searchTerm = searchInput.value.trim();
+      if (!searchTerm || !db) return;
+      const q = query(collection(db, 'users'), orderBy('name'), startAt(searchTerm), endAt(searchTerm + '\uf8ff'));
+      try {
+        const snapshot = await getDocs(q);
+        searchUsersList.innerHTML = '';
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.beaconOn) {
+            const li = document.createElement('li');
+            li.textContent = data.name;
+            const msgButton = document.createElement('button');
+            msgButton.textContent = 'Msg';
+            msgButton.onclick = () => {
+              selectedRecipientId = doc.id;
+              messageList.innerHTML = `<h3>Messages with ${data.name}</h3>`;
+              listenForMessages();
+            };
+            li.appendChild(msgButton);
+            searchUsersList.appendChild(li);
+          }
+        });
+        logDebug(`Searched users: ${searchTerm}`);
+      } catch (error) {
+        logDebug(`Search error: ${error.message}`);
+      }
+    });
+
+    // Send message
+    sendMessageButton.addEventListener('click', async () => {
+      if (selectedRecipientId && messageInput.value.trim() && db) {
+        const message = {
+          senderId: userId,
+          recipientId: selectedRecipientId,
+          content: messageInput.value.trim(),
+          timestamp: new Date()
+        };
+        try {
+          await setDoc(doc(collection(db, 'users', selectedRecipientId, 'messages')), message);
+          messageInput.value = '';
+          logDebug('Message sent');
+        } catch (error) {
+          logDebug(`Send message error: ${error.message}`);
+        }
+      }
+    });
+
+    // Listen for messages
+    function listenForMessages() {
+      if (!selectedRecipientId || !db) return;
+      try {
+        onSnapshot(collection(db, 'users', userId, 'messages'), snapshot => {
+          messageList.innerHTML = `<h3>Messages with ${selectedRecipientId.substring(0, 5)}</h3>`;
+          snapshot.forEach(doc => {
+            const msg = doc.data();
+            const p = document.createElement('p');
+            p.textContent = `${msg.senderId === userId ? 'You' : 'They'}: ${msg.content}`;
+            messageList.appendChild(p);
+          });
+        }, error => {
+          logDebug(`Messages error: ${error.message}`);
+        });
+      } catch (error) {
+        logDebug(`Snapshot error: ${error.message}`);
+      }
+    }
+
+    // Beep sound
+    function startBeep() {
+      if (!audioContext) {
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          if (audioContext.state === 'suspended') {
+            audioContext.resume().catch(err => logDebug(`Audio resume error: ${err}`));
+          }
+        } catch (error) {
+          logDebug(`Audio init error: ${error}`);
+          return;
+        }
+      }
+      updateBeep();
+    }
+
+    function stopBeep() {
+      if (oscillator) {
+        oscillator.stop();
+        oscillator = null;
+      }
+    }
+
+    function updateBeep() {
+      if (!beaconOn || !audioContext || audioContext.state !== 'running') return;
+      const activeUsers = Object.values(otherUsers).filter(user => user.beaconOn && user.location);
+      if (activeUsers.length === 0) {
+        stopBeep();
+        return;
+      }
+      let minDistance = Infinity;
+      activeUsers.forEach(user => {
+        const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
+        if (distance < minDistance) minDistance = distance;
+      });
+      const maxDistance = 1000;
+      const minFrequency = 0.5;
+      const maxFrequency = 5;
+      let frequency = minDistance < maxDistance
+        ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
+        : 0;
+      if (frequency > 0) {
+        try {
+          if (!oscillator) {
+            oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+          }
+          oscillator.frequency.setValueAtTime(440 * frequency, audioContext.currentTime + 0.1);
+          setTimeout(updateBeep, 1000 / frequency);
+        } catch (error) {
+          logDebug(`Beep error: ${error}`);
+          stopBeep();
+        }
+      } else {
+        stopBeep();
+      }
+    }
+
+    // Listen for other users
+    if (db) {
+      try {
+        onSnapshot(collection(db, 'users'), async snapshot => {
+          Object.values(otherUsers).forEach(user => {
+            if (user.marker) map.removeLayer(user.marker);
+          });
+          otherUsers = {};
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const id = doc.id;
+            if (id === userId) return;
+            if (data.beaconOn && data.location && data.timestamp) {
+              const lastUpdate = data.timestamp.toDate();
+              const now = new Date();
+              const age = (now - lastUpdate) / 1000 / 60;
+              if (age < 5) {
+                const latlng = [data.location.latitude, data.location.longitude];
+                otherUsers[id] = {
+                  marker: L.circleMarker(latlng, { color: 'blue', fillColor: 'blue', fillOpacity: 0.8, radius: 6 }).addTo(map),
+                  location: data.location,
+                  beaconOn: true
+                };
+              } else {
+                deleteDoc(doc.ref).catch(err => logDebug(`Delete doc: ${err}`));
+              }
+            }
+          });
+          logDebug(`Other users: ${Object.keys(otherUsers).length}`);
+          if (beaconOn) {
+            updateBeep();
+            fetchNearbyUsers();
+          }
+        }, error => {
+          logDebug(`Users snapshot error: ${error}`);
+        });
+      } catch (error) {
+        logDebug(`Snapshot setup error: ${error}`);
+      }
+    }
+  </script>
+</body>
+</html>
