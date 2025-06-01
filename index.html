@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meet with Sound</title>
-  <!-- Leaflet CSS for map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- GeoFire for geohash queries -->
   <script src="https://unpkg.com/geofire-common@6.0.0/dist/index.min.js"></script>
   <style>
     #map { height: 500px; width: 100%; }
@@ -15,9 +13,7 @@
     #retry-button, #beacon-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
-    @keyframes flash {
-      50% { opacity: 0; }
-    }
+    @keyframes flash { 50% { opacity: 0; } }
     #nearby-users { margin: 10px; }
     #message-input { width: 80%; padding: 5px; }
     #message-list { margin: 10px; max-height: 200px; overflow-y: auto; }
@@ -41,13 +37,12 @@
   <input id="message-input" type="text" placeholder="Type a message..." class="hidden">
   <button id="send-message" class="hidden">Send</button>
 
-  <!-- Firebase Modular SDK -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
     import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint, query, orderBy, startAt, endAt, getDocs } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
     import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
+    import 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
 
-    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
@@ -58,21 +53,15 @@
       measurementId: "G-2LKEG2N7ZD"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
 
-    // Leaflet JS for map
-    import 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-
-    // Map setup
     const map = L.map('map').setView([0, 0], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // User data
     let userPosition = null;
     let userMarker = null;
     let otherUsers = {};
@@ -82,7 +71,6 @@
     let userId = null;
     let selectedRecipientId = null;
 
-    // DOM elements
     const statusDiv = document.getElementById('status');
     const permissionMessage = document.getElementById('permission-message');
     const retryButton = document.getElementById('retry-button');
@@ -92,13 +80,11 @@
     const sendMessageButton = document.getElementById('send-message');
     const messageList = document.getElementById('message-list');
 
-    // Authenticate anonymously
     signInAnonymously(auth).then(userCredential => {
       userId = userCredential.user.uid;
       requestLocation();
     }).catch(error => console.error('Auth error:', error));
 
-    // Request location
     function requestLocation() {
       statusDiv.textContent = 'Getting your location...';
       permissionMessage.style.display = 'none';
@@ -122,7 +108,6 @@
       );
     }
 
-    // Update user location with geohash
     async function updateUserLocation() {
       if (userPosition) {
         const hash = geofire.geohashForLocation(userPosition);
@@ -130,7 +115,7 @@
           location: new GeoPoint(userPosition[0], userPosition[1]),
           geohash: hash,
           beaconOn: beaconOn,
-          name: `User_${userId.substring(0, 5)}`, // Temporary name
+          name: `User_${userId.substring(0, 5)}`,
           timestamp: new Date()
         });
         if (userMarker) {
@@ -138,20 +123,21 @@
         } else {
           userMarker = L.circleMarker(userPosition, {
             color: 'red',
-            radius: 10,
-            className: beaconOn ? 'flashing' : ''
+            radius: 10
           }).addTo(map);
         }
-        if (beaconOn) {
-          userMarker.setStyle({ className: 'flashing' });
-          map.setView(userPosition, 15);
-        } else {
-          userMarker.setStyle({ className: '' });
+        const markerElement = userMarker.getElement();
+        if (markerElement) {
+          if (beaconOn) {
+            markerElement.classList.add('flashing');
+            map.setView(userPosition, 15);
+          } else {
+            markerElement.classList.remove('flashing');
+          }
         }
       }
     }
 
-    // Toggle beacon
     beaconButton.addEventListener('click', () => {
       beaconOn = !beaconOn;
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
@@ -171,13 +157,11 @@
       }
     });
 
-    // Retry location
     retryButton.addEventListener('click', requestLocation);
 
-    // Fetch nearby users (within 1 km)
     async function fetchNearbyUsers() {
       if (!userPosition || !beaconOn) return;
-      const radiusInM = 1000; // 1 km
+      const radiusInM = 1000;
       const bounds = geofire.geohashQueryBounds(userPosition, radiusInM);
       const promises = [];
       for (const b of bounds) {
@@ -197,7 +181,7 @@
           const data = doc.data();
           if (data.beaconOn && data.location) {
             const distance = geofire.distanceBetween([data.location.latitude, data.location.longitude], userPosition) * 1000;
-            if (distance <= radiusInM) {
+            if (distance <= radiusInM && doc.id !== userId) {
               nearbyUsers.push({ id: doc.id, name: data.name, distance });
             }
           }
@@ -218,7 +202,6 @@
       });
     }
 
-    // Send message
     sendMessageButton.addEventListener('click', async () => {
       if (selectedRecipientId && messageInput.value.trim()) {
         const message = {
@@ -232,7 +215,6 @@
       }
     });
 
-    // Listen for messages
     function listenForMessages() {
       if (!selectedRecipientId) return;
       onSnapshot(collection(db, 'users', userId, 'messages'), snapshot => {
@@ -246,7 +228,6 @@
       });
     }
 
-    // Web Audio API for beep sound
     function startBeep() {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -296,7 +277,6 @@
       }
     }
 
-    // Listen for other users' locations
     onSnapshot(collection(db, 'users'), snapshot => {
       snapshot.forEach(doc => {
         const data = doc.data();
@@ -323,6 +303,17 @@
       if (beaconOn) {
         updateBeep();
         fetchNearbyUsers();
+      }
+    });
+
+    // 🔒 Clean up on unload to prevent duplicates
+    window.addEventListener('beforeunload', async () => {
+      if (userId) {
+        try {
+          await setDoc(doc(db, 'users', userId), { beaconOn: false }, { merge: true });
+        } catch (e) {
+          console.error('Cleanup error:', e);
+        }
       }
     });
   </script>
