@@ -89,22 +89,25 @@
     });
 
     // === Toggle Beacon ===
-    let audioCtx;
-    function toggleBeacon() {
-      if (!audioCtx) audioCtx = new AudioContext();
+  function toggleBeacon() {
+  if (!audioCtx) audioCtx = new AudioContext();
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
 
-      beaconActive = !beaconActive;
-      document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
+  beaconActive = !beaconActive;
+  document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
 
-      db.collection("users").doc(userId).set({
-        lat: currentLat,
-        lon: currentLon,
-        beacon: beaconActive,
-        timestamp: Date.now(),
-      });
+  db.collection("users").doc(userId).set({
+    lat: currentLat,
+    lon: currentLon,
+    beacon: beaconActive,
+    timestamp: Date.now(),
+  });
 
-      beaconActive ? startLocalBeeping() : stopLocalBeeping();
-    }
+  beaconActive ? startLocalBeeping() : stopLocalBeeping();
+}
+
 
     let localBeepInterval;
     function startLocalBeeping() {
