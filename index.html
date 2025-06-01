@@ -2,65 +2,65 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Meet with Friends</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meet with Sound</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
   <style>
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
-    #distance { text-align: center; margin: 0px; display: none; }
-    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: none; margin: 0px auto; padding: 8px; }
+    #distance { text-align: center; margin: 10px; display: none; }
+    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
-    .flashing { animation: flash 0s infinite; }
+    .flashing { animation: flash 1s infinite; }
     @keyframes flash { 50% { opacity: 0; } }
-    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: none; margin: 0px auto; padding: 0px; }
+    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: block; margin: 10px auto; padding: 5px; }
     .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
-    .marker-female { background: pink; border-radius: 50%; width: 12px; height: 12px; }
-    .marker-nonbinary { background: yellow; border-radius: 50%; width: 12px; height: 12px; }
-    .marker-you { background: green; border: 0px solid white; border-radius: 0%; width: 20px; height: 20px; }
+    .marker-female { background: pink; width: 12px; height: 12px; }
+    .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
+    .marker-you { background: red; border-radius: 50%; width: 12px; height: 12px; }
   </style>
 </head>
 <body>
   <div id="status">Getting your location...</div>
   <div id="permission-message">
-    <h2>Permissions Required</h2>
-    <p>This app needs your location to work.</p>
-    <p>Please enable location access in your browser.</p>
-    <button id="retry-button">Retry</button>
+    <h2>Location Permission Required</h2>
+    <p>This app needs your location to work properly.</p>
+    <p>Please enable location access in your browser settings and retry.</p>
+    <button id="retry-button">Retry Location</button>
   </div>
-  <input id="text" name="text" type="Enter your name" placeholder="Enter your name" maxlength="hidden">
-  <select id="gender" class="hidden">
-    <option value="" disabled="disabled" selected="selected">Select Gender</option>
-    <option value="male">M</option>
-    <option value="female">F</option>
-    <option value="non-binary">NB</option>
+  <input id="name-input" type="text" placeholder="Enter your name" class="hidden" maxlength="20">
+  <select id="gender-select" class="hidden">
+    <option value="" disabled selected>Select your gender</option>
+    <option value="male">Male</option>
+    <option value="female">Female</option>
+    <option value="non-binary">Non-binary</option>
   </select>
-  <select id="gender-select">
-    <option value="all">All</option>
-    <option value="male">M</option>
-    <option value="female">F</option>
-    <option value="non-binary">NB</option>
+  <select id="search-gender-select" class="hidden">
+    <option value="all">All Genders</option>
+    <option value="male">Male</option>
+    <option value="female">Female</option>
+    <option value="non-binary">Non-binary</option>
   </select>
   <select id="lock-user-select" class="hidden">
     <option value="">No Lock</option>
   </select>
   <button id="beacon-button" class="hidden" disabled>Beacon OFF</button>
-  <button id="sound-button" class="hidden">Sound</button>
-  <button id="test-sound-button" class="hidden">Test</button>
-  <div id="distance" class="hidden">Distance to closest: N/A</div>
+  <button id="sound-button" class="hidden">Sound OFF</button>
+  <button id="test-sound-button" class="hidden">Test Sound</button>
+  <div id="distance" class="hidden">Distance to closest user: N/A</div>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
   <script type="module">
     // Import Firebase
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.googleapis.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 
     // Firebase config
     const firebaseConfig = {
-      apiKey: "AIzaSyDC6wFuBTZHlpvoxmaL5ISEgFAWY",
+      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
       projectId: "risk-ec382",
       storageBucket: "risk-ec382.appspot.com",
@@ -125,58 +125,81 @@
     function requestLocation() {
       statusDiv.textContent = 'Getting your location...';
       permissionMessage.style.display = 'none';
-      navigator.geolocation.watchPosition(
-        position => {
-          userPosition = [position.coords.latitude, position.coords.longitude];
-          statusDiv.className = 'hidden';
-          nameInput.className = '';
-          genderSelect.className = '';
-          searchGenderSelect.className = '';
-          lockUserSelect.className = '';
-          soundButton.className = '';
-          testSoundButton.className = '';
-          updateUserLocation();
-          // Zoom only when beacon is first turned ON
-          if (beaconOn && !lastBeaconOn) {
-            map.setView(userPosition, 15);
-          }
-          lastBeaconOn = beaconOn;
-        },
-        error => {
-          statusDiv.className = 'hidden';
-          permissionMessage.style.display = 'block';
-          console.error('Location error:', error);
-        },
-        { enableHighAccuracy: true }
-      );
+      try {
+        navigator.geolocation.watchPosition(
+          position => {
+            userPosition = [position.coords.latitude, position.coords.longitude];
+            statusDiv.className = 'hidden';
+            nameInput.className = '';
+            genderSelect.className = '';
+            searchGenderSelect.className = '';
+            lockUserSelect.className = '';
+            soundButton.className = '';
+            testSoundButton.className = '';
+            updateUserLocation();
+            // Zoom only when beacon is first turned ON
+            if (beaconOn && !lastBeaconOn) {
+              map.setView(userPosition, 15);
+            }
+            lastBeaconOn = beaconOn;
+            console.log('Location acquired:', userPosition);
+          },
+          error => {
+            statusDiv.className = 'hidden';
+            permissionMessage.style.display = 'block';
+            console.error('Location error:', error.message, 'Code:', error.code);
+            switch (error.code) {
+              case error.PERMISSION_DENIED:
+                permissionMessage.querySelector('p').textContent = 'Location access denied. Please enable location in your browser settings.';
+                break;
+              case error.POSITION_UNAVAILABLE:
+                permissionMessage.querySelector('p').textContent = 'Location unavailable. Ensure GPS is enabled and try again.';
+                break;
+              case error.TIMEOUT:
+                permissionMessage.querySelector('p').textContent = 'Location request timed out. Please try again.';
+                break;
+              default:
+                permissionMessage.querySelector('p').textContent = 'An error occurred while getting your location.';
+            }
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // 10s timeout, no cached position
+        );
+      } catch (e) {
+        statusDiv.className = 'hidden';
+        permissionMessage.style.display = 'block';
+        permissionMessage.querySelector('p').textContent = 'Geolocation not supported by your browser.';
+        console.error('Geolocation error:', e);
+      }
     }
 
     // Update user location and status
     async function updateUserLocation() {
       if (userPosition && userGender && userName) {
-        // Update Firebase
-        await setDoc(doc(db, 'users', userId), {
-          location: new GeoPoint(userPosition[0], userPosition[1]),
-          beaconOn: beaconOn,
-          gender: userGender,
-          name: userName,
-          timestamp: new Date()
-        }).catch(error => console.error('Firestore write error:', error));
-
-        // Update or create user marker
-        if (userMarker) {
-          userMarker.setLatLng(userPosition);
-          userMarker.setPopupContent(`${userName} (${userGender})`);
-          userMarker.setIcon(getMarkerIcon(userGender, true));
-        } else {
-          userMarker = L.marker(userPosition, {
-            icon: getMarkerIcon(userGender, true),
-            className: beaconOn ? 'flashing' : ''
-          }).addTo(map).bindPopup(`${userName} (${userGender})`);
-        }
-        if (beaconOn && !lastBeaconOn) {
-          userMarker.setIcon(getMarkerIcon(userGender, true));
-          map.setView(userPosition, 15);
+        try {
+          await setDoc(doc(db, 'users', userId), {
+            location: new GeoPoint(userPosition[0], userPosition[1]),
+            beaconOn: beaconOn,
+            gender: userGender,
+            name: userName,
+            timestamp: new Date()
+          });
+          // Update or create user marker
+          if (userMarker) {
+            userMarker.setLatLng(userPosition);
+            userMarker.setPopupContent(`${userName} (${userGender})`);
+            userMarker.setIcon(getMarkerIcon(userGender, true));
+          } else {
+            userMarker = L.marker(userPosition, {
+              icon: getMarkerIcon(userGender, true),
+              className: beaconOn ? 'flashing' : ''
+            }).addTo(map).bindPopup(`${userName} (${userGender})`);
+          }
+          if (beaconOn && !lastBeaconOn) {
+            userMarker.setIcon(getMarkerIcon(userGender, true));
+            map.setView(userPosition, 15);
+          }
+        } catch (error) {
+          console.error('Firestore write error:', error);
         }
       }
     }
@@ -445,19 +468,33 @@
             }
           } else if (otherUsers[id]) {
             if (otherUsers[id].marker._map) {
-              map.removeLayer(otherUsers[id].marker);
+              map.removeLayer(otherUsersUsers[id].marker[id].marker);
             }
             delete otherUsers[id];
           }
         });
-        updateVisibleUsers();
+       );
+            }
+            delete otherUsers[id];
+          }
+        updateVisibleUsers(); });
+       
+        if (beaconOn && soundOn) updateBeep();
+      }, error => console.error('Firestore snapshot error:', error));
+    }
+ updateVisibleUsers();
         if (beaconOn && soundOn) updateBeep();
       }, error => console.error('Firestore snapshot error:', error));
     }
 
     // Initialize
     initializeUserListener();
+    request
+    // Initialize
+    initializeUserListener();
     requestLocation();
   </script>
 </body>
-</html>
+</htmlLocation();
+  </script>
+</body>>
