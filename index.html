@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,13 +10,14 @@
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
+    #distance { text-align: center; margin: 10px; display: none; }
     #retry-button, #beacon-button, #sound-button, #test-sound-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
     @keyframes flash {
       50% { opacity: 0; }
     }
-    #gender-select { display: block; margin: 10px auto; padding: 5px; }
+    #gender-select, #search-gender-select, #lock-user-select { display: block; margin: 10px auto; padding: 5px; }
     .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
     .marker-female { background: pink; width: 12px; height: 12px; }
     .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
@@ -33,13 +33,24 @@
     <button id="retry-button">Retry Location</button>
   </div>
   <select id="gender-select" class="hidden">
+    <option value="" disabled selected>Select your gender</option>
     <option value="male">Male</option>
     <option value="female">Female</option>
     <option value="non-binary">Non-binary</option>
   </select>
-  <button id="beacon-button" class="hidden">Beacon OFF</button>
+  <select id="search-gender-select" class="hidden">
+    <option value="all">All Genders</option>
+    <option value="male">Male</option>
+    <option value="female">Female</option>
+    <option value="non-binary">Non-binary</option>
+  </select>
+  <select id="lock-user-select" class="hidden">
+    <option value="">No Lock</option>
+  </select>
+  <button id="beacon-button" class="hidden" disabled>Beacon OFF</button>
   <button id="sound-button" class="hidden">Sound OFF</button>
   <button id="test-sound-button" class="hidden">Test Sound</button>
+  <div id="distance" class="hidden">Distance to closest user: N/A</div>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
@@ -81,7 +92,9 @@
     let audioContext = null;
     let oscillator = null;
     let userId = Math.random().toString(36).substring(2); // Random ID for demo
-    let userGender = 'male'; // Default gender
+    let userGender = ''; // No default gender
+    let searchGender = 'all'; // Default search all genders
+    let lockedUserId = ''; // No locked user by default
 
     // DOM elements
     const statusDiv = document.getElementById('status');
@@ -91,6 +104,9 @@
     const soundButton = document.getElementById('sound-button');
     const testSoundButton = document.getElementById('test-sound-button');
     const genderSelect = document.getElementById('gender-select');
+    const searchGenderSelect = document.getElementById('search-gender-select');
+    const lockUserSelect = document.getElementById('lock-user-select');
+    const distanceDiv = document.getElementById('distance');
 
     // Function to get marker icon based on gender
     function getMarkerIcon(gender, isUser = false) {
@@ -111,10 +127,11 @@
         position => {
           userPosition = [position.coords.latitude, position.coords.longitude];
           statusDiv.className = 'hidden';
-          beaconButton.className = '';
+          genderSelect.className = '';
+          searchGenderSelect.className = '';
+          lockUserSelect.className = '';
           soundButton.className = '';
           testSoundButton.className = '';
-          genderSelect.className = '';
           updateUserLocation();
           if (beaconOn) {
             map.setView(userPosition, 15);
@@ -131,7 +148,7 @@
 
     // Update user location and status in Firebase and on map
     async function updateUserLocation() {
-      if (userPosition) {
+      if (userPosition && userGender) {
         // Update Firebase
         await setDoc(doc(db, 'users', userId), {
           location: new GeoPoint(userPosition[0], userPosition[1]),
@@ -158,8 +175,38 @@
       }
     }
 
+    // Enable beacon button only after gender selection
+    genderSelect.addEventListener('change', () => {
+      userGender = genderSelect.value;
+      if (userGender) {
+        beaconButton.disabled = false;
+        beaconButton.className = '';
+      }
+      updateUserLocation();
+    });
+
+    // Update search gender
+    searchGenderSelect.addEventListener('change', () => {
+      searchGender = searchGenderSelect.value;
+      updateVisibleUsers();
+    });
+
+    // Update locked user
+    lockUserSelect.addEventListener('change', () => {
+      lockedUserId = lockUserSelect.value;
+      if (beaconOn && soundOn) {
+        startBeep();
+      } else {
+        stopBeep();
+      }
+    });
+
     // Toggle beacon
     beaconButton.addEventListener('click', () => {
+      if (!userGender) {
+        alert('Please select your gender first.');
+        return;
+      }
       beaconOn = !beaconOn;
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
       updateUserLocation();
@@ -199,12 +246,6 @@
       console.log('Test sound played');
     });
 
-    // Update gender
-    genderSelect.addEventListener('change', () => {
-      userGender = genderSelect.value;
-      updateUserLocation();
-    });
-
     // Retry location
     retryButton.addEventListener('click', requestLocation);
 
@@ -236,32 +277,40 @@
     function updateBeep() {
       if (!beaconOn || !soundOn || !audioContext || audioContext.state !== 'running') {
         stopBeep();
+        distanceDiv.textContent = 'Distance to closest user: N/A';
+        distanceDiv.className = 'hidden';
         console.log('Beep not started: beaconOn=', beaconOn, 'soundOn=', soundOn, 'audioContext.state=', audioContext?.state);
         return;
       }
 
-      // Find closest user
+      // Find closest user or locked user
       let minDistance = Infinity;
       let closestUser = null;
+      let targetUserId = lockedUserId || null;
       Object.values(otherUsers).forEach(user => {
-        if (user.beaconOn && user.location) {
-          const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
-          if (distance < minDistance) {
-            minDistance = distance;
-            closestUser = user;
+        if (user.beaconOn && user.location && (!targetUserId || user.id === targetUserId)) {
+          if (searchGender === 'all' || user.gender === searchGender) {
+            const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
+            if (distance < minDistance) {
+              minDistance = distance;
+              closestUser = user;
+            }
           }
         }
       });
 
-      // Beep only within 100 meters for testing (revert to 20 later)
-      const maxDistance = 100; // 100 meters for easier testing
-      const minFrequency = 0.5; // Beeps per second (at 100m)
-      const maxFrequency = 5; // Beeps per second (very close)
+      // Beep only within 20 meters with tempo from 20 BPM to 180 BPM
+      const maxDistance = 20; // 20 meters
+      const minDistanceThreshold = 5; // 5 meters
+      const minFrequency = 20 / 60; // 20 BPM = 0.33 Hz
+      const maxFrequency = 180 / 60; // 180 BPM = 3 Hz
       let frequency = minDistance <= maxDistance
-        ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
+        ? minFrequency + (maxFrequency - minFrequency) * Math.max(0, (maxDistance - Math.max(minDistance, minDistanceThreshold)) / (maxDistance - minDistanceThreshold))
         : 0;
 
       if (frequency > 0) {
+        distanceDiv.textContent = `Distance to ${lockedUserId ? 'locked' : 'closest'} user: ${minDistance.toFixed(2)} meters`;
+        distanceDiv.className = '';
         if (!oscillator) {
           try {
             oscillator = audioContext.createOscillator();
@@ -269,7 +318,7 @@
             oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
             oscillator.connect(audioContext.destination);
             oscillator.start();
-            console.log('Beep started, distance:', minDistance.toFixed(2), 'meters');
+            console.log('Beep started, distance:', minDistance.toFixed(2), 'meters, frequency:', (frequency * 60).toFixed(2), 'BPM');
           } catch (error) {
             console.error('Oscillator creation failed:', error);
             return;
@@ -285,7 +334,38 @@
         setTimeout(updateBeep, 1000 / frequency);
       } else {
         stopBeep();
-        console.log('No users within', maxDistance, 'meters');
+        distanceDiv.textContent = 'Distance to closest user: N/A';
+        distanceDiv.className = 'hidden';
+        console.log('No users within', maxDistance, 'meters or matching search criteria');
+      }
+    }
+
+    // Update visible users based on search gender
+    function updateVisibleUsers() {
+      Object.keys(otherUsers).forEach(id => {
+        const user = otherUsers[id];
+        if (user.beaconOn && user.location) {
+          const shouldShow = searchGender === 'all' || user.gender === searchGender;
+          if (shouldShow && !user.marker._map) {
+            user.marker.addTo(map);
+          } else if (!shouldShow && user.marker._map) {
+            map.removeLayer(user.marker);
+          }
+        }
+      });
+      // Update lock user dropdown
+      lockUserSelect.innerHTML = '<option value="">No Lock</option>';
+      Object.keys(otherUsers).forEach(id => {
+        const user = otherUsers[id];
+        if (user.beaconOn && (searchGender === 'all' || user.gender === searchGender)) {
+          const option = document.createElement('option');
+          option.value = id;
+          option.textContent = `User (${user.gender})`;
+          lockUserSelect.appendChild(option);
+        }
+      });
+      if (beaconOn && soundOn) {
+        startBeep();
       }
     }
 
@@ -305,20 +385,28 @@
             otherUsers[id].marker.setIcon(getMarkerIcon(gender));
             otherUsers[id].location = data.location;
             otherUsers[id].beaconOn = data.beaconOn;
+            otherUsers[id].gender = gender;
+            otherUsers[id].id = id;
           } else {
             otherUsers[id] = {
               marker: L.marker(latlng, {
                 icon: getMarkerIcon(gender)
-              }).addTo(map).bindPopup(`User (${gender})`),
+              }).bindPopup(`User (${gender})`),
               location: data.location,
-              beaconOn: data.beaconOn
+              beaconOn: data.beaconOn,
+              gender: gender,
+              id: id
             };
+            if (searchGender === 'all' || gender === searchGender) {
+              otherUsers[id].marker.addTo(map);
+            }
           }
         } else if (otherUsers[id]) {
           map.removeLayer(otherUsers[id].marker);
           delete otherUsers[id];
         }
       });
+      updateVisibleUsers();
       if (beaconOn && soundOn) updateBeep();
     }, error => console.error('Firestore snapshot error:', error));
 
