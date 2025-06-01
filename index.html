@@ -18,19 +18,33 @@
       top: 10px;
       left: 10px;
       z-index: 1000;
-      padding: 10px;
+      padding: 10px 20px;
       background: white;
       border: 2px solid rgba(0,0,0,0.2);
       border-radius: 4px;
       cursor: pointer;
+      font-weight: bold;
     }
     #toggleBeacon:hover {
       background: #f1f1f1;
     }
+    .beacon-on {
+      background: #ff4444;
+      color: white;
+    }
+    .pulse-icon {
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7); }
+      70% { transform: scale(1.1); box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+    }
   </style>
 </head>
 <body>
-  <button id="toggleBeacon">Toggle Beacon</button>
+  <button id="toggleBeacon">Beacon OFF</button>
   <div id="map"></div>
 
   <!-- Leaflet JS -->
@@ -68,12 +82,20 @@
     let userMarker;
     let audioCtx;
     let localBeepInterval;
+    let pulseInterval;
 
     // === Map ===
     const map = L.map('map').setView([0, 0], 2); // Start with world view
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
     }).addTo(map);
+
+    // Create a pulsing icon for the user's beacon
+    const pulseIcon = L.divIcon({
+      className: 'pulse-icon',
+      iconSize: [20, 20],
+      html: '<div style="background-color:red;width:100%;height:100%;border-radius:50%;"></div>'
+    });
 
     // === Button ===
     document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
@@ -92,6 +114,7 @@
           console.log(`Position updated: ${currentLat}, ${currentLon}`);
 
           if (!userMarker) {
+            // Create initial marker
             userMarker = L.marker([currentLat, currentLon], {
               icon: L.icon({
                 iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
@@ -100,7 +123,12 @@
                 popupAnchor: [1, -34]
               })
             }).addTo(map).bindPopup("You are here");
-            map.setView([currentLat, currentLon], 16);
+            
+            // Zoom to user location with a nice animation
+            map.flyTo([currentLat, currentLon], 16, {
+              animate: true,
+              duration: 1
+            });
           } else {
             userMarker.setLatLng([currentLat, currentLon]);
           }
@@ -148,8 +176,9 @@
       }
 
       beaconActive = !beaconActive;
-      document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
-      document.getElementById('toggleBeacon').style.backgroundColor = beaconActive ? '#4CAF50' : 'white';
+      const button = document.getElementById('toggleBeacon');
+      button.textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
+      button.classList.toggle('beacon-on', beaconActive);
 
       try {
         await db.collection("users").doc(userId).set({
@@ -162,7 +191,26 @@
         console.error("Failed to update beacon status:", err);
       }
 
-      beaconActive ? startLocalBeeping() : stopLocalBeeping();
+      if (beaconActive) {
+        // Zoom to user location when beacon is activated
+        map.flyTo([currentLat, currentLon], 16, {
+          animate: true,
+          duration: 1
+        });
+        
+        // Change to pulsing red dot
+        userMarker.setIcon(pulseIcon);
+        startLocalBeeping();
+      } else {
+        // Change back to normal marker
+        userMarker.setIcon(L.icon({
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34]
+        }));
+        stopLocalBeeping();
+      }
     }
 
     function startLocalBeeping() {
@@ -293,8 +341,6 @@
       osc.connect(gain).connect(panner).connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.2);
-
-      console.log(`Beep for user ${id.substring(0, 6)} at ${distance.toFixed(1)}m, interval ${interval}ms`);
     }
 
     // Initialize everything when the page loads
