@@ -19,6 +19,13 @@
       left: 10px;
       z-index: 1000;
       padding: 10px;
+      background: white;
+      border: 2px solid rgba(0,0,0,0.2);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #toggleBeacon:hover {
+      background: #f1f1f1;
     }
   </style>
 </head>
@@ -40,8 +47,14 @@
       appId: "1:177105151944:web:758b928eb83ccb894902fd",
       measurementId: "G-2LKEG2N7ZD"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    
+    try {
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+      console.log("Firebase initialized successfully");
+    } catch (err) {
+      console.error("Firebase initialization error", err);
+    }
 
     // === Globals ===
     const userId = localStorage.getItem("anonUserId") || crypto.randomUUID();
@@ -53,79 +66,117 @@
     const markers = {};
     const lastBeepTimestamps = {};
     let userMarker;
+    let audioCtx;
+    let localBeepInterval;
 
     // === Map ===
-    const map = L.map('map').setView([0, 0], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    const map = L.map('map').setView([0, 0], 2); // Start with world view
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
 
     // === Button ===
     document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
 
     // === Location ===
-    window.addEventListener("load", () => {
-      watchId = navigator.geolocation.watchPosition(async (pos) => {
-        currentLat = pos.coords.latitude;
-        currentLon = pos.coords.longitude;
+    function initGeolocation() {
+      if (!navigator.geolocation) {
+        console.error("Geolocation is not supported by your browser");
+        return;
+      }
 
-        if (!userMarker) {
-          userMarker = L.marker([currentLat, currentLon], {icon: L.icon({iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png'})}).addTo(map);
-          map.setView([currentLat, currentLon], 16);
-        } else {
-          userMarker.setLatLng([currentLat, currentLon]);
+      watchId = navigator.geolocation.watchPosition(
+        async (pos) => {
+          currentLat = pos.coords.latitude;
+          currentLon = pos.coords.longitude;
+          console.log(`Position updated: ${currentLat}, ${currentLon}`);
+
+          if (!userMarker) {
+            userMarker = L.marker([currentLat, currentLon], {
+              icon: L.icon({
+                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34]
+              })
+            }).addTo(map).bindPopup("You are here");
+            map.setView([currentLat, currentLon], 16);
+          } else {
+            userMarker.setLatLng([currentLat, currentLon]);
+          }
+
+          try {
+            await db.collection("users").doc(userId).set({
+              lat: currentLat,
+              lon: currentLon,
+              beacon: beaconActive,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+          } catch (err) {
+            console.error("Failed to update user position:", err);
+          }
+        },
+        (err) => {
+          console.error("Geolocation error:", err);
+        },
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+      );
+    }
+
+    // === Toggle Beacon ===
+    async function toggleBeacon() {
+      // Initialize audio context on first interaction if needed
+      if (!audioCtx) {
+        try {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+          console.log("AudioContext created");
+        } catch (err) {
+          console.error("AudioContext creation failed", err);
+          return;
         }
+      }
 
+      // Ensure audio context is resumed
+      if (audioCtx.state === 'suspended') {
+        try {
+          await audioCtx.resume();
+          console.log("AudioContext resumed");
+        } catch (err) {
+          console.error("AudioContext resume failed", err);
+          return;
+        }
+      }
+
+      beaconActive = !beaconActive;
+      document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
+      document.getElementById('toggleBeacon').style.backgroundColor = beaconActive ? '#4CAF50' : 'white';
+
+      try {
         await db.collection("users").doc(userId).set({
           lat: currentLat,
           lon: currentLon,
           beacon: beaconActive,
-          timestamp: Date.now(),
-        });
-      }, console.error, { enableHighAccuracy: true });
-    });
+          timestamp: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+      } catch (err) {
+        console.error("Failed to update beacon status:", err);
+      }
 
-    window.addEventListener("beforeunload", async () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-      await db.collection("users").doc(userId).delete();
-    });
-
-    // === Toggle Beacon ===
-  async function toggleBeacon() {
-  if (!audioCtx) audioCtx = new AudioContext();
-
-  if (audioCtx.state === 'suspended') {
-    try {
-      await audioCtx.resume();
-      console.log("AudioContext resumed");
-    } catch (err) {
-      console.error("AudioContext resume failed:", err);
-      return;
+      beaconActive ? startLocalBeeping() : stopLocalBeeping();
     }
-  }
 
-  beaconActive = !beaconActive;
-  document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
-
-  try {
-    await db.collection("users").doc(userId).set({
-      lat: currentLat,
-      lon: currentLon,
-      beacon: beaconActive,
-      timestamp: Date.now(),
-    });
-  } catch (err) {
-    console.error("Failed to update Firestore:", err);
-  }
-
-  beaconActive ? startLocalBeeping() : stopLocalBeeping();
-}
-
-    let localBeepInterval;
     function startLocalBeeping() {
+      if (localBeepInterval) clearInterval(localBeepInterval);
       localBeepInterval = setInterval(() => playBeep(200, 0.2), 1000);
     }
+
     function stopLocalBeeping() {
-      clearInterval(localBeepInterval);
+      if (localBeepInterval) {
+        clearInterval(localBeepInterval);
+        localBeepInterval = null;
+      }
     }
+
     function playBeep(freq, duration) {
       if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
@@ -141,10 +192,17 @@
 
     // === Remote Detection ===
     db.collection("users").onSnapshot(snapshot => {
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        const id = doc.id;
+      snapshot.docChanges().forEach(change => {
+        const id = change.doc.id;
+        const data = change.doc.data();
+
         if (id === userId) return;
+
+        if (change.type === 'removed') {
+          removeMarker(id);
+          return;
+        }
+
         if (data.beacon) {
           updateOrCreateMarker(id, data.lat, data.lon);
           triggerSpatialBeep(id, data.lat, data.lon);
@@ -152,11 +210,20 @@
           removeMarker(id);
         }
       });
+    }, err => {
+      console.error("Firestore snapshot error:", err);
     });
 
     function updateOrCreateMarker(id, lat, lon) {
       if (!markers[id]) {
-        markers[id] = L.marker([lat, lon]).addTo(map);
+        markers[id] = L.marker([lat, lon], {
+          icon: L.icon({
+            iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-red.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34]
+          })
+        }).addTo(map).bindPopup(`User ${id.substring(0, 6)}`);
       } else {
         markers[id].setLatLng([lat, lon]);
       }
@@ -169,34 +236,81 @@
       }
     }
 
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // meters
+      const φ1 = lat1 * Math.PI/180;
+      const φ2 = lat2 * Math.PI/180;
+      const Δφ = (lat2-lat1) * Math.PI/180;
+      const Δλ = (lon2-lon1) * Math.PI/180;
+
+      const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+      return R * c;
+    }
+
     function triggerSpatialBeep(id, lat, lon) {
-      if (!audioCtx) return;
+      if (!audioCtx || !beaconActive) return;
 
       const now = Date.now();
-      if (lastBeepTimestamps[id] && now - lastBeepTimestamps[id] < 1000) return;
+      if (lastBeepTimestamps[id] && now - lastBeepTimestamps[id] < 500) return;
       lastBeepTimestamps[id] = now;
 
-      const dx = (lon - currentLon) * 1000;
-      const dy = (lat - currentLat) * 1000;
+      const distance = calculateDistance(currentLat, currentLon, lat, lon);
+      const maxDistance = 100; // meters
+      const minInterval = 200; // ms
+      const maxInterval = 2000; // ms
+
+      // Calculate beep interval based on distance
+      let interval = minInterval;
+      if (distance > maxDistance) {
+        interval = maxInterval;
+      } else {
+        interval = minInterval + (maxInterval - minInterval) * (distance / maxDistance);
+      }
+
+      // Create stereo panning effect
+      const angle = Math.atan2(lon - currentLon, lat - currentLat);
+      const panValue = Math.sin(angle);
 
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
-      const panner = audioCtx.createPanner();
+      const panner = audioCtx.createStereoPanner();
 
-      panner.panningModel = "HRTF";
-      panner.distanceModel = "linear";
-      panner.maxDistance = 1000;
-      panner.setPosition(dx, 0, dy);
+      panner.pan.value = panValue;
+
+      // Higher frequency when closer
+      const baseFreq = 200;
+      const freq = baseFreq + (1000 - baseFreq) * (1 - Math.min(1, distance / maxDistance));
 
       osc.type = "sine";
-      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
       gain.gain.setValueAtTime(1, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
 
       osc.connect(gain).connect(panner).connect(audioCtx.destination);
       osc.start();
-      osc.stop(audioCtx.currentTime + 0.3);
+      osc.stop(audioCtx.currentTime + 0.2);
+
+      console.log(`Beep for user ${id.substring(0, 6)} at ${distance.toFixed(1)}m, interval ${interval}ms`);
     }
+
+    // Initialize everything when the page loads
+    window.addEventListener('load', () => {
+      initGeolocation();
+    });
+
+    window.addEventListener('beforeunload', async () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      stopLocalBeeping();
+      try {
+        await db.collection("users").doc(userId).delete();
+      } catch (err) {
+        console.error("Failed to remove user:", err);
+      }
+    });
   </script>
 </body>
 </html>
