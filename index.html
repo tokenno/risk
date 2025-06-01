@@ -89,21 +89,34 @@
     });
 
     // === Toggle Beacon ===
-  function toggleBeacon() {
+    let audioCtx;
+  async function toggleBeacon() {
   if (!audioCtx) audioCtx = new AudioContext();
+
+  // Ensure audio context is resumed after user interaction
   if (audioCtx.state === 'suspended') {
-    audioCtx.resume();
+    try {
+      await audioCtx.resume();
+      console.log("AudioContext resumed");
+    } catch (err) {
+      console.error("AudioContext resume failed", err);
+      return;
+    }
   }
 
   beaconActive = !beaconActive;
   document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
 
-  db.collection("users").doc(userId).set({
-    lat: currentLat,
-    lon: currentLon,
-    beacon: beaconActive,
-    timestamp: Date.now(),
-  });
+  try {
+    await db.collection("users").doc(userId).set({
+      lat: currentLat,
+      lon: currentLon,
+      beacon: beaconActive,
+      timestamp: Date.now(),
+    });
+  } catch (err) {
+    console.error("Failed to update beacon status:", err);
+  }
 
   beaconActive ? startLocalBeeping() : stopLocalBeeping();
 }
