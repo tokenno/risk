@@ -24,6 +24,7 @@
       border-radius: 4px;
       cursor: pointer;
       font-weight: bold;
+      display: none; /* Hidden until location is found */
     }
     #toggleBeacon:hover {
       background: #f1f1f1;
@@ -52,10 +53,34 @@
       border-radius: 5px;
       box-shadow: 0 0 10px rgba(0,0,0,0.2);
     }
+    #permissionPrompt {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 1001;
+      background: white;
+      padding: 20px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      text-align: center;
+      display: none;
+    }
+    #permissionPrompt button {
+      margin: 10px;
+      padding: 8px 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <div id="loading">Getting your location...</div>
+  <div id="permissionPrompt">
+    <h3>Location Permission Required</h3>
+    <p>This app needs your location to work properly.</p>
+    <p>Please allow location access in your browser settings.</p>
+    <button id="retryLocation">Retry Location</button>
+  </div>
   <button id="toggleBeacon">Beacon OFF</button>
   <div id="map"></div>
 
@@ -120,16 +145,21 @@
 
     // === Button ===
     document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
+    document.getElementById('retryLocation').addEventListener('click', initGeolocation);
 
     // === Location ===
     function initGeolocation() {
+      document.getElementById('permissionPrompt').style.display = 'none';
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('loading').textContent = "Getting your location...";
+
       if (!navigator.geolocation) {
-        alert("Geolocation is not supported by your browser");
-        document.getElementById('loading').textContent = "Geolocation not supported";
+        showLocationError("Geolocation is not supported by your browser");
         return;
       }
 
-      document.getElementById('loading').textContent = "Getting your location...";
+      // Clear any existing watch
+      if (watchId) navigator.geolocation.clearWatch(watchId);
 
       watchId = navigator.geolocation.watchPosition(
         async (pos) => {
@@ -137,8 +167,9 @@
           currentLon = pos.coords.longitude;
           console.log(`Position updated: ${currentLat}, ${currentLon}`);
 
-          // Remove loading message
+          // Hide loading message
           document.getElementById('loading').style.display = 'none';
+          document.getElementById('toggleBeacon').style.display = 'block';
 
           if (!userMarker) {
             // Create initial marker
@@ -166,10 +197,29 @@
         },
         (err) => {
           console.error("Geolocation error:", err);
-          document.getElementById('loading').textContent = "Error getting location: " + err.message;
+          showLocationError(getErrorMessage(err.code));
         },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+        { 
+          enableHighAccuracy: true, 
+          maximumAge: 0, 
+          timeout: 10000 
+        }
       );
+    }
+
+    function showLocationError(message) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('permissionPrompt').style.display = 'block';
+      document.getElementById('permissionPrompt').querySelector('p').textContent = message;
+    }
+
+    function getErrorMessage(errorCode) {
+      switch(errorCode) {
+        case 1: return "Permission denied. Please allow location access in your browser settings.";
+        case 2: return "Location unavailable. Please check your network connection or GPS.";
+        case 3: return "Location request timed out. Please try again.";
+        default: return "Error getting your location. Please try again.";
+      }
     }
 
     // === Toggle Beacon ===
@@ -370,6 +420,13 @@
     // Initialize everything when the page loads
     window.addEventListener('load', () => {
       initGeolocation();
+      
+      // Fallback in case browser doesn't prompt for permission
+      setTimeout(() => {
+        if (!userMarker && document.getElementById('loading').style.display !== 'none') {
+          showLocationError("Browser didn't request location permission. Please check your browser settings.");
+        }
+      }, 5000);
     });
 
     window.addEventListener('beforeunload', async () => {
