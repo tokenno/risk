@@ -4,10 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Map Application</title>
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha512-Zcn6bjR/8n/hu2O+WVhaK4xF5Qr3jsP4d99+2DM0W9GIt6s6v4Vo4RY+0yNagZx0cMim3rj4o01vD0iQ5vD/9+A==" crossorigin="" />
-  <!-- Vue.js CDN -->
-  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+  <!-- Leaflet CSS with corrected integrity hash -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
+        crossorigin="" />
+  <!-- Vue.js production build -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -72,7 +74,7 @@
 
     <div v-if="mapError" class="error-message">
       <p>Map Error</p>
-      <p>Failed to load map. Please check your connection.</p>
+      <p>{{ mapErrorMessage }}</p>
       <button class="retry-button" @click="retryMap">Retry</button>
     </div>
     <div v-else class="map-container">
@@ -108,8 +110,10 @@
     </div>
   </div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha512-BwHfrr4cWJ8Ek4HZrV2k+pX9S0Q71+hi5k6E9MHv6+3tJweU1v+/bK5gwhSI3kJ3YAsr2kJ2lQQ4odQ2hWjDL2Q==" crossorigin=""></script>
+  <!-- Leaflet JS with corrected integrity hash -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+          crossorigin=""></script>
   <script>
     const { createApp } = Vue;
 
@@ -119,6 +123,7 @@
           initializing: true,
           authError: false,
           mapError: false,
+          mapErrorMessage: 'Failed to load map. Please check your connection.',
           locationError: false,
           locationErrorMessage: 'Unable to retrieve location.',
           status: 'OFFLINE',
@@ -130,6 +135,14 @@
         };
       },
       mounted() {
+        // Ensure Leaflet is loaded before initializing
+        if (typeof L === 'undefined') {
+          console.error('Leaflet not loaded');
+          this.mapError = true;
+          this.mapErrorMessage = 'Failed to load map library. Please check your connection.';
+          this.initializeApp();
+          return;
+        }
         this.initializeApp();
       },
       methods: {
@@ -151,6 +164,14 @@
           if (!document.getElementById('map')) {
             console.error('Map container not found');
             this.mapError = true;
+            this.mapErrorMessage = 'Map container not found.';
+            return;
+          }
+
+          if (typeof L === 'undefined') {
+            console.error('Leaflet not loaded');
+            this.mapError = true;
+            this.mapErrorMessage = 'Failed to load map library. Please check your connection.';
             return;
           }
 
@@ -164,6 +185,7 @@
             tileLayer.on('tileerror', (error) => {
               console.error('Tile loading error:', error);
               this.mapError = true;
+              this.mapErrorMessage = 'Failed to load map tiles. Please check your connection.';
               L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
                 attribution: '© <a href="https://www.openstreetmap.de/copyright">OpenStreetMap</a>',
                 maxZoom: 19,
@@ -181,6 +203,7 @@
           } catch (error) {
             console.error('Map initialization failed:', error);
             this.mapError = true;
+            this.mapErrorMessage = 'Map initialization failed: ' + error.message;
           }
         },
         getUserLocation() {
@@ -224,9 +247,9 @@
               }
             },
             {
-              timeout: 10000, // 10-second timeout
-              maximumAge: 0, // No cached position
-              enableHighAccuracy: true, // Request high accuracy
+              timeout: 10000,
+              maximumAge: 0,
+              enableHighAccuracy: true,
             }
           );
         },
@@ -234,15 +257,14 @@
           this.authError = false;
           this.initializeApp();
         },
-       retryMap() {
-  this.mapError = false;
-  if (this.map) {
-    this.map.remove();
-  }
-  this.$nextTick(() => {
-    this.initMap();
-  });
-}
+        retryMap() {
+          this.mapError = false;
+          this.mapErrorMessage = 'Failed to load map. Please check your connection.';
+          if (this.map) {
+            this.map.remove();
+          }
+          this.initMap();
+        },
         retryLocation() {
           this.locationError = false;
           this.locationErrorMessage = 'Unable to retrieve location.';
@@ -267,8 +289,8 @@
             ];
             this.loadingNearby = false;
           }, 1000);
-        },
-      },
+        }
+      }
     }).mount('#app');
   </script>
 </body>
