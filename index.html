@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -10,14 +11,13 @@
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
-    #retry-button, #beacon-button, #sound-button { display: block; margin: 10px auto; padding: 10px; }
+    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
     @keyframes flash {
       50% { opacity: 0; }
     }
     #gender-select { display: block; margin: 10px auto; padding: 5px; }
-    /* Custom marker styles */
     .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
     .marker-female { background: pink; width: 12px; height: 12px; }
     .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
@@ -39,6 +39,7 @@
   </select>
   <button id="beacon-button" class="hidden">Beacon OFF</button>
   <button id="sound-button" class="hidden">Sound OFF</button>
+  <button id="test-sound-button" class="hidden">Test Sound</button>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
@@ -88,6 +89,7 @@
     const retryButton = document.getElementById('retry-button');
     const beaconButton = document.getElementById('beacon-button');
     const soundButton = document.getElementById('sound-button');
+    const testSoundButton = document.getElementById('test-sound-button');
     const genderSelect = document.getElementById('gender-select');
 
     // Function to get marker icon based on gender
@@ -111,6 +113,7 @@
           statusDiv.className = 'hidden';
           beaconButton.className = '';
           soundButton.className = '';
+          testSoundButton.className = '';
           genderSelect.className = '';
           updateUserLocation();
           if (beaconOn) {
@@ -135,7 +138,7 @@
           beaconOn: beaconOn,
           gender: userGender,
           timestamp: new Date()
-        });
+        }).catch(error => console.error('Firestore write error:', error));
 
         // Update or create user marker
         if (userMarker) {
@@ -178,6 +181,24 @@
       }
     });
 
+    // Test sound
+    testSoundButton.addEventListener('click', () => {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        console.log('AudioContext initialized for test');
+      }
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => console.log('AudioContext resumed'));
+      }
+      const testOscillator = audioContext.createOscillator();
+      testOscillator.type = 'sine';
+      testOscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+      testOscillator.connect(audioContext.destination);
+      testOscillator.start();
+      testOscillator.stop(audioContext.currentTime + 0.5);
+      console.log('Test sound played');
+    });
+
     // Update gender
     genderSelect.addEventListener('change', () => {
       userGender = genderSelect.value;
@@ -190,7 +211,16 @@
     // Web Audio API for beep sound
     function startBeep() {
       if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          console.log('AudioContext initialized');
+        } catch (error) {
+          console.error('AudioContext initialization failed:', error);
+          return;
+        }
+      }
+      if (audioContext.state === 'suspended') {
+        audioContext.resume().then(() => console.log('AudioContext resumed')).catch(error => console.error('AudioContext resume failed:', error));
       }
       updateBeep();
     }
@@ -199,27 +229,33 @@
       if (oscillator) {
         oscillator.stop();
         oscillator = null;
+        console.log('Beep stopped');
       }
     }
 
     function updateBeep() {
-      if (!beaconOn || !soundOn || !audioContext) {
+      if (!beaconOn || !soundOn || !audioContext || audioContext.state !== 'running') {
         stopBeep();
+        console.log('Beep not started: beaconOn=', beaconOn, 'soundOn=', soundOn, 'audioContext.state=', audioContext?.state);
         return;
       }
 
       // Find closest user
       let minDistance = Infinity;
+      let closestUser = null;
       Object.values(otherUsers).forEach(user => {
         if (user.beaconOn && user.location) {
           const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
-          if (distance < minDistance) minDistance = distance;
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestUser = user;
+          }
         }
       });
 
-      // Beep only within 20 meters
-      const maxDistance = 20; // 20 meters
-      const minFrequency = 0.5; // Beeps per second (at 20m)
+      // Beep only within 100 meters for testing (revert to 20 later)
+      const maxDistance = 100; // 100 meters for easier testing
+      const minFrequency = 0.5; // Beeps per second (at 100m)
       const maxFrequency = 5; // Beeps per second (very close)
       let frequency = minDistance <= maxDistance
         ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
@@ -227,11 +263,17 @@
 
       if (frequency > 0) {
         if (!oscillator) {
-          oscillator = audioContext.createOscillator();
-          oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-          oscillator.connect(audioContext.destination);
-          oscillator.start();
+          try {
+            oscillator = audioContext.createOscillator();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+            oscillator.connect(audioContext.destination);
+            oscillator.start();
+            console.log('Beep started, distance:', minDistance.toFixed(2), 'meters');
+          } catch (error) {
+            console.error('Oscillator creation failed:', error);
+            return;
+          }
         }
         // Schedule beeps
         oscillator.stop(audioContext.currentTime + 0.1);
@@ -243,6 +285,7 @@
         setTimeout(updateBeep, 1000 / frequency);
       } else {
         stopBeep();
+        console.log('No users within', maxDistance, 'meters');
       }
     }
 
@@ -277,7 +320,7 @@
         }
       });
       if (beaconOn && soundOn) updateBeep();
-    });
+    }, error => console.error('Firestore snapshot error:', error));
 
     // Initial location request
     requestLocation();
