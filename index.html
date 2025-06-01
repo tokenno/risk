@@ -15,19 +15,11 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
+      min-height: 100%;
       overflow-y: auto;
       background: #f5f5f5;
       color: #333;
       -webkit-font-smoothing: antialiased;
-    }
-    #map {
-      flex: 0 0 30vh;
-      min-height: 30vh;
-      max-height: 30vh;
-      width: 100%;
-      display: block;
-      z-index: 1;
     }
     #loading-message {
       text-align: center;
@@ -52,7 +44,7 @@
       margin: 5px 0;
     }
     #location-permission-message button {
-      margin: 10px auto;
+      margin: 10px;
       padding: 8px 16px;
       font-size: 14px;
       color: white;
@@ -61,32 +53,31 @@
       border-radius: 4px;
       cursor: pointer;
     }
+    #map {
+      height: 30vh;
+      width: 100%;
+      display: block;
+    }
     #beacon-button {
       display: none;
       margin: 10px auto;
       padding: 10px 20px;
       font-size: 16px;
-      font-weight: 600;
       color: white;
       background: #1976d2;
       border: none;
       border-radius: 25px;
       cursor: pointer;
       min-width: 120px;
-      z-index: 2;
     }
     #beacon-button:hover {
       background: #1565c0;
     }
-    #ui-container {
-      flex: 1;
-      overflow-y: auto;
-      padding: 5px;
-      max-height: calc(100vh - 30vh - 40px);
+    #name-container, #ui-container {
       display: none;
+      padding: 5px;
       background: white;
       border-top: 1px solid #ddd;
-      z-index: 2;
     }
     #name-input {
       width: 120px;
@@ -98,7 +89,6 @@
       border-radius: 4px;
     }
     #set-name-button, #search-button, #send-message, #refresh-button {
-      display: block;
       margin: 5px auto;
       padding: 6px 12px;
       font-size: 14px;
@@ -148,22 +138,9 @@
       margin: 5px 0;
       color: #444;
     }
-    .hidden { display: none !important; }
-    .flashing {
-      animation: pulse 1s infinite;
-    }
-    @keyframes pulse {
-      0% { transform: scale(1); }
-      50% { transform: scale(1.3); }
-      100% { transform: scale(1); }
-    }
     @media (max-width: 600px) {
       #map {
-        min-height: 25vh;
-        max-height: 25vh;
-      }
-      #ui-container {
-        max-height: calc(100vh - 25vh - 40px);
+        height: 25vh;
       }
       #beacon-button {
         padding: 8px 16px;
@@ -184,32 +161,34 @@
   </style>
 </head>
 <body>
-  <div id="loading-message">Getting your location...</div>
-  <div id="location-permission-message" class="hidden">
+  <div id="loading-message" style="display: block;">Getting your location...</div>
+  <div id="location-permission-message" style="display: none;">
     <h2>Location Permission Required</h2>
     <p>This app needs your location to work properly.</p>
     <p>Please allow location access in your browser settings.</p>
     <button id="retry-location">Retry</button>
   </div>
-  <div id="map"></div>
-  <button id="beacon-button" class="hidden">Beacon OFF</button>
-  <div id="ui-container">
-    <input id="name-input" type="text" placeholder="Enter name..." class="hidden">
-    <button id="set-name-button" class="hidden">Set Name</button>
-    <button id="refresh-button" class="hidden">Refresh</button>
-    <div id="search-users" class="hidden">
+  <div id="name-container" style="display: none;">
+    <input id="name-input" type="text" placeholder="Enter name...">
+    <button id="set-name-button">Set Name</button>
+  </div>
+  <div id="map" style="display: block;"></div>
+  <button id="beacon-button" style="display: none;">Beacon OFF</button>
+  <div id="ui-container" style="display: none;">
+    <button id="refresh-button" style="display: none;">Refresh</button>
+    <div id="search-users">
       <h3>Search Users</h3>
       <input id="search-input" type="text" placeholder="Search name...">
       <button id="search-button">Search</button>
       <ul id="search-users-list"></ul>
     </div>
-    <div id="nearby-users" class="hidden">
+    <div id="nearby-users">
       <h3>Nearby (1 km)</h3>
       <ul id="nearby-users-list"></ul>
     </div>
     <div id="message-list"></div>
-    <input id="message-input" type="text" placeholder="Message..." class="hidden">
-    <button id="send-message" class="hidden">Send</button>
+    <input id="message-input" type="text" placeholder="Message...">
+    <button id="send-message">Send</button>
   </div>
 
   <script type="module">
@@ -236,6 +215,7 @@
     } catch (error) {
       console.error('Firebase init error:', error);
       document.getElementById('loading-message').textContent = 'Error: Firebase failed.';
+      document.getElementById('loading-message').style.display = 'block';
     }
 
     let userPosition = null;
@@ -251,10 +231,11 @@
     const loadingMessage = document.getElementById('loading-message');
     const locationPermissionMessage = document.getElementById('location-permission-message');
     const retryLocationButton = document.getElementById('retry-location');
-    const beaconButton = document.getElementById('beacon-button');
-    const uiContainer = document.getElementById('ui-container');
+    const nameContainer = document.getElementById('name-container');
     const nameInput = document.getElementById('name-input');
     const setNameButton = document.getElementById('set-name-button');
+    const beaconButton = document.getElementById('beacon-button');
+    const uiContainer = document.getElementById('ui-container');
     const refreshButton = document.getElementById('refresh-button');
     const searchInput = document.getElementById('search-input');
     const searchButton = document.getElementById('search-button');
@@ -268,44 +249,29 @@
       console.log(`${new Date().toLocaleTimeString()}: ${msg}`);
     }
 
-    async function initMap(attempt = 1, maxAttempts = 5) {
-      if (typeof L !== 'undefined') {
-        try {
-          map = L.map('map').setView([0, 0], 13);
-          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
-          map.invalidateSize();
-          window.addEventListener('resize', () => {
-            map.invalidateSize();
-            logDebug('Map resized');
-          });
-          window.addEventListener('orientationchange', () => {
-            setTimeout(() => map.invalidateSize(), 100);
-            logDebug('Orientation changed');
-          });
-          if (window.visualViewport) {
-            window.visualViewport.addEventListener('resize', () => {
-              map.invalidateSize();
-              const mapHeight = map.getContainer().offsetHeight;
-              uiContainer.style.maxHeight = `${window.visualViewport.height - mapHeight - 40}px`;
-              logDebug(`Viewport resized: ui max-height=${uiContainer.style.maxHeight}`);
-            });
-          }
-          logDebug('Map initialized');
-          return true;
-        } catch (error) {
-          logDebug(`Map init error: ${error.message}`);
-          loadingMessage.textContent = 'Map failed to load.';
-          return false;
-        }
-      } else if (attempt <= maxAttempts) {
-        logDebug(`Leaflet not loaded, retry ${attempt}/${maxAttempts}`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return initMap(attempt + 1, maxAttempts);
-      } else {
-        logDebug('Leaflet failed to load');
+    async function initMap() {
+      if (typeof L === 'undefined') {
+        logDebug('Leaflet not loaded');
         loadingMessage.textContent = 'Failed to load map. Check connection.';
+        loadingMessage.style.display = 'block';
+        return false;
+      }
+      try {
+        map = L.map('map').setView([0, 0], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(map);
+        map.invalidateSize();
+        window.addEventListener('resize', () => {
+          map.invalidateSize();
+          logDebug('Map resized');
+        });
+        logDebug('Map initialized');
+        return true;
+      } catch (error) {
+        logDebug(`Map init error: ${error.message}`);
+        loadingMessage.textContent = 'Map failed to load.';
+        loadingMessage.style.display = 'block';
         return false;
       }
     }
@@ -313,10 +279,12 @@
     async function tryAuthenticate() {
       if (!auth) {
         loadingMessage.textContent = 'Firebase not initialized.';
+        loadingMessage.style.display = 'block';
         logDebug('Auth failed: no auth object');
         return;
       }
       loadingMessage.textContent = 'Authenticating...';
+      loadingMessage.style.display = 'block';
       logDebug('Starting authentication');
       try {
         const userCredential = await signInAnonymously(auth);
@@ -336,65 +304,46 @@
 
         loadingMessage.textContent = 'Loading map...';
         if (await initMap()) {
-          loadingMessage.className = 'hidden';
-          nameInput.className = '';
-          setNameButton.className = '';
+          loadingMessage.style.display = 'none';
+          nameContainer.style.display = 'block';
           nameInput.value = localStorage.getItem('userName') || '';
           logDebug('Name input shown');
         } else {
           loadingMessage.textContent = 'Map failed to load.';
-          loadingMessage.className = '';
+          loadingMessage.style.display = 'block';
         }
       } catch (error) {
         logDebug(`Auth error: ${error.code} - ${error.message}`);
         loadingMessage.textContent = `Auth failed: ${error.message}`;
-        loadingMessage.className = '';
+        loadingMessage.style.display = 'block';
       }
     }
 
-    if (typeof L !== 'undefined') {
-      tryAuthenticate();
-    } else {
-      const leafletScript = document.querySelector('script[src*="leaflet"]');
-      if (leafletScript) {
-        leafletScript.addEventListener('load', () => {
-          logDebug('Leaflet loaded');
-          tryAuthenticate();
-        });
-        leafletScript.addEventListener('error', () => {
-          logDebug('Leaflet script failed');
-          loadingMessage.textContent = 'Failed to load map. Check connection.';
-          loadingMessage.className = '';
-        });
-      } else {
-        logDebug('Leaflet script tag missing');
-        loadingMessage.textContent = 'Map library not found.';
-        loadingMessage.className = '';
-      }
-    }
+    tryAuthenticate();
 
     function requestLocation(attempt = 1, maxAttempts = 3) {
       loadingMessage.textContent = 'Getting location...';
-      loadingMessage.className = '';
-      locationPermissionMessage.className = 'hidden';
+      loadingMessage.style.display = 'block';
+      locationPermissionMessage.style.display = 'none';
       logDebug(`Requesting location, attempt ${attempt}`);
       navigator.geolocation.watchPosition(
         position => {
           userPosition = [position.coords.latitude, position.coords.longitude];
-          loadingMessage.className = 'hidden';
-          refreshButton.className = '';
+          loadingMessage.style.display = 'none';
+          refreshButton.style.display = 'block';
+          beaconButton.style.display = 'block';
+          map.style.display = 'block';
           updateUserLocation();
           if (map && userPosition) {
             map.setView(userPosition, 15);
-            document.getElementById('map').style.display = 'block';
             map.invalidateSize();
             logDebug(`Map zoomed to: ${userPosition}, zoom 15`);
           }
         },
         error => {
           logDebug(`Location error: ${error.message}, attempt ${attempt}/${maxAttempts}`);
-          loadingMessage.className = 'hidden';
-          locationPermissionMessage.className = '';
+          loadingMessage.style.display = 'none';
+          locationPermissionMessage.style.display = 'block';
           if (error.code === error.PERMISSION_DENIED) {
             locationPermissionMessage.querySelector('p').textContent = 'Location access denied. Enable in settings.';
           } else if (attempt < maxAttempts) {
@@ -407,12 +356,23 @@
       );
     }
 
-    if (retryLocationButton) {
-      retryLocationButton.addEventListener('click', () => {
-        logDebug('Retry location clicked');
+    retryLocationButton.addEventListener('click', () => {
+      logDebug('Retry location clicked');
+      requestLocation();
+    });
+
+    setNameButton.addEventListener('click', () => {
+      if (nameInput.value.trim()) {
+        nameContainer.style.display = 'none';
+        beaconButton.style.display = 'block';
+        map.style.display = 'block';
+        map.invalidateSize();
         requestLocation();
-      });
-    }
+        logDebug('Beacon button and map shown');
+      } else {
+        alert('Please enter a name.');
+      }
+    });
 
     async function updateUserLocation() {
       if (userPosition && userId && db && map) {
@@ -438,29 +398,13 @@
             color: 'red',
             fillColor: 'red',
             fillOpacity: 1,
-            radius: 10,
-            className: 'flashing'
+            radius: 10
           }).addTo(map);
+          userMarker._path.classList.add('flashing');
           logDebug(`Added flashing user marker: ${userPosition}`);
         }
-        userMarker.setStyle({ className: 'flashing' });
       }
     }
-
-    setNameButton.addEventListener('click', () => {
-      if (nameInput.value.trim()) {
-        updateUserLocation();
-        nameInput.className = 'hidden';
-        setNameButton.className = 'hidden';
-        beaconButton.className = '';
-        document.getElementById('map').style.display = 'block';
-        map.invalidateSize();
-        requestLocation();
-        logDebug('Beacon button and map shown');
-      } else {
-        alert('Please enter a name.');
-      }
-    });
 
     beaconButton.addEventListener('click', () => {
       beaconOn = !beaconOn;
@@ -471,18 +415,14 @@
         startBeep();
         fetchNearbyUsers();
         uiContainer.style.display = 'block';
-        searchUsersList.parentElement.className = '';
-        nearbyUsersList.parentElement.className = '';
-        messageInput.className = '';
-        sendMessageButton.className = '';
+        refreshButton.style.display = 'block';
+        logDebug('UI container shown');
       } else {
         stopBeep();
         uiContainer.style.display = 'none';
-        searchUsersList.parentElement.className = 'hidden';
-        nearbyUsersList.parentElement.className = 'hidden';
-        messageInput.className = 'hidden';
-        sendMessageButton.className = 'hidden';
+        refreshButton.style.display = 'none';
         messageList.innerHTML = '';
+        logDebug('UI container hidden');
       }
       logDebug(`Beacon: ${beaconOn}`);
     });
@@ -711,14 +651,6 @@
         logDebug(`Snapshot setup error: ${error}`);
       }
     }
-
-    setTimeout(() => {
-      if (loadingMessage.style.display === 'none' && locationPermissionMessage.style.display === 'none' && beaconButton.style.display === 'none' && nameInput.style.display === 'none') {
-        loadingMessage.textContent = 'UI failed to load. Please refresh.';
-        loadingMessage.className = '';
-        logDebug('Fallback: UI not visible');
-      }
-    }, 5000);
   </script>
 </body>
 </html>
