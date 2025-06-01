@@ -2,70 +2,68 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Meet with Sound</title>
-  <!-- Leaflet CSS for map -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Meet with Friends</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
   <style>
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
-    #distance { text-align: center; margin: 10px; display: none; }
-    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: block; margin: 10px auto; padding: 10px; }
+    #distance { text-align: center; margin: 0px; display: none; }
+    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: none; margin: 0px auto; padding: 8px; }
     .hidden { display: none; }
-    .flashing { animation: flash 1s infinite; }
-    @keyframes flash {
-      50% { opacity: 0; }
-    }
-    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: block; margin: 10px auto; padding: 5px; }
+    .flashing { animation: flash 0s infinite; }
+    @keyframes flash { 50% { opacity: 0; } }
+    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: none; margin: 0px auto; padding: 0px; }
     .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
-    .marker-female { background: pink; width: 12px; height: 12px; }
-    .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
-    .marker-you { background: red; border-radius: 50%; width: 12px; height: 12px; }
+    .marker-female { background: pink; border-radius: 50%; width: 12px; height: 12px; }
+    .marker-nonbinary { background: yellow; border-radius: 50%; width: 12px; height: 12px; }
+    .marker-you { background: green; border: 0px solid white; border-radius: 0%; width: 20px; height: 20px; }
   </style>
 </head>
 <body>
   <div id="status">Getting your location...</div>
   <div id="permission-message">
-    <h2>Location Permission Required</h2>
-    <p>This app needs your location to work properly.</p>
-    <p>Please allow location access in your browser settings.</p>
-    <button id="retry-button">Retry Location</button>
+    <h2>Permissions Required</h2>
+    <p>This app needs your location to work.</p>
+    <p>Please enable location access in your browser.</p>
+    <button id="retry-button">Retry</button>
   </div>
-  <input id="name-input" type="text" placeholder="Enter your name" class="hidden" maxlength="20">
-  <select id="gender-select" class="hidden">
-    <option value="" disabled selected>Select your gender</option>
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-    <option value="non-binary">Non-binary</option>
+  <input id="text" name="text" type="Enter your name" placeholder="Enter your name" maxlength="hidden">
+  <select id="gender" class="hidden">
+    <option value="" disabled="disabled" selected="selected">Select Gender</option>
+    <option value="male">M</option>
+    <option value="female">F</option>
+    <option value="non-binary">NB</option>
   </select>
-  <select id="search-gender-select" class="hidden">
-    <option value="all">All Genders</option>
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-    <option value="non-binary">Non-binary</option>
+  <select id="gender-select">
+    <option value="all">All</option>
+    <option value="male">M</option>
+    <option value="female">F</option>
+    <option value="non-binary">NB</option>
   </select>
   <select id="lock-user-select" class="hidden">
     <option value="">No Lock</option>
   </select>
   <button id="beacon-button" class="hidden" disabled>Beacon OFF</button>
-  <button id="sound-button" class="hidden">Sound OFF</button>
-  <button id="test-sound-button" class="hidden">Test Sound</button>
-  <div id="distance" class="hidden">Distance to closest user: N/A</div>
+  <button id="sound-button" class="hidden">Sound</button>
+  <button id="test-sound-button" class="hidden">Test</button>
+  <div id="distance" class="hidden">Distance to closest: N/A</div>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
   <script type="module">
-    // Import Firebase modules
+    // Import Firebase
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.googleapis.com/firebasejs/10.14.1/firebase-firestore.js';
 
-    // Firebase configuration
+    // Firebase config
     const firebaseConfig = {
-      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
+      apiKey: "AIzaSyDC6wFuBTZHlpvoxmaL5ISEgFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
       projectId: "risk-ec382",
-      storageBucket: "risk-ec382.firebasestorage.app",
+      storageBucket: "risk-ec382.appspot.com",
       messagingSenderId: "177105151944",
       appId: "1:177105151944:web:758b928eb83ccb894902fd",
       measurementId: "G-2LKEG2N7ZD"
@@ -75,8 +73,8 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // Leaflet JS for map
-    import 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    // Leaflet JS
+    import 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
 
     // Map setup
     const map = L.map('map').setView([0, 0], 13);
@@ -92,12 +90,12 @@
     let soundOn = false;
     let audioContext = null;
     let oscillator = null;
-    let userId = Math.random().toString(36).substring(2); // Random ID for demo
+    let userId = Math.random().toString(36).substring(2); // Random ID
     let userGender = ''; // No default gender
     let userName = ''; // No default name
-    let searchGender = 'all'; // Default search all genders
-    let lockedUserId = ''; // No locked user by default
-    let lastBeaconOn = false; // Track beacon state for zoom control
+    let searchGender = 'all'; // Default search all
+    let lockedUserId = ''; // No locked user
+    let lastBeaconOn = false; // Track beacon for zoom
 
     // DOM elements
     const statusDiv = document.getElementById('status');
@@ -112,7 +110,7 @@
     const lockUserSelect = document.getElementById('lock-user-select');
     const distanceDiv = document.getElementById('distance');
 
-    // Function to get marker icon based on gender
+    // Marker icon based on gender
     function getMarkerIcon(gender, isUser = false) {
       const className = isUser ? 'marker-you' : `marker-${gender.replace('non-binary', 'nonbinary')}`;
       return L.divIcon({
@@ -138,7 +136,7 @@
           soundButton.className = '';
           testSoundButton.className = '';
           updateUserLocation();
-          // Only zoom when beacon is first turned ON
+          // Zoom only when beacon is first turned ON
           if (beaconOn && !lastBeaconOn) {
             map.setView(userPosition, 15);
           }
@@ -153,7 +151,7 @@
       );
     }
 
-    // Update user location and status in Firebase and on map
+    // Update user location and status
     async function updateUserLocation() {
       if (userPosition && userGender && userName) {
         // Update Firebase
@@ -183,7 +181,7 @@
       }
     }
 
-    // Enable beacon button only after name and gender selection
+    // Enable beacon after name and gender
     function checkBeaconEnable() {
       if (userGender && userName) {
         beaconButton.disabled = false;
@@ -269,7 +267,7 @@
     // Retry location
     retryButton.addEventListener('click', requestLocation);
 
-    // Web Audio API for beep sound
+    // Web Audio API for beep
     function startBeep() {
       if (!audioContext) {
         try {
@@ -303,7 +301,7 @@
         return;
       }
 
-      // Find closest user or locked user
+      // Find closest or locked user
       let minDistance = Infinity;
       let closestUser = null;
       let targetUserId = lockedUserId || null;
@@ -319,9 +317,9 @@
         }
       });
 
-      // Beep only within 20 meters with tempo from 20 BPM to 180 BPM
-      const maxDistance = 20; // 20 meters
-      const minDistanceThreshold = 5; // 5 meters
+      // Beep within 20 meters, 20-180 BPM
+      const maxDistance = 20;
+      const minDistanceThreshold = 5;
       const minFrequency = 20 / 60; // 20 BPM = 0.33 Hz
       const maxFrequency = 180 / 60; // 180 BPM = 3 Hz
       let frequency = minDistance <= maxDistance
@@ -344,7 +342,6 @@
             return;
           }
         }
-        // Schedule beeps
         oscillator.stop(audioContext.currentTime + 0.1);
         oscillator = audioContext.createOscillator();
         oscillator.type = 'sine';
@@ -360,11 +357,19 @@
       }
     }
 
-    // Update visible users based on search gender
+    // Update visible users
     function updateVisibleUsers() {
+      const now = new Date().getTime();
+      const staleThreshold = 30 * 1000; // 30 seconds
       Object.keys(otherUsers).forEach(id => {
         const user = otherUsers[id];
-        if (user.beaconOn && user.location) {
+        const userTimestamp = user.timestamp ? user.timestamp.toDate().getTime() : 0;
+        if (!user.beaconOn || (now - userTimestamp) > staleThreshold) {
+          if (user.marker._map) {
+            map.removeLayer(user.marker);
+          }
+          delete otherUsers[id];
+        } else if (user.beaconOn && user.location) {
           const shouldShow = searchGender === 'all' || user.gender === searchGender;
           if (shouldShow && !user.marker._map) {
             user.marker.addTo(map);
@@ -389,51 +394,69 @@
       }
     }
 
-    // Listen for other users' locations
-    onSnapshot(collection(db, 'users'), snapshot => {
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        const id = doc.id;
-        if (id === userId) return;
-
-        if (data.beaconOn && data.location) {
-          const latlng = [data.location.latitude, data.location.longitude];
-          const gender = data.gender || 'unknown';
-          const name = data.name || 'User';
-          if (otherUsers[id]) {
-            otherUsers[id].marker.setLatLng(latlng);
-            otherUsers[id].marker.setPopupContent(`${name} (${gender})`);
-            otherUsers[id].marker.setIcon(getMarkerIcon(gender));
-            otherUsers[id].location = data.location;
-            otherUsers[id].beaconOn = data.beaconOn;
-            otherUsers[id].gender = gender;
-            otherUsers[id].name = name;
-            otherUsers[id].id = id;
-          } else {
-            otherUsers[id] = {
-              marker: L.marker(latlng, {
-                icon: getMarkerIcon(gender)
-              }).bindPopup(`${name} (${gender})`),
-              location: data.location,
-              beaconOn: data.beaconOn,
-              gender: gender,
-              name: name,
-              id: id
-            };
-            if (searchGender === 'all' || gender === searchGender) {
-              otherUsers[id].marker.addTo(map);
-            }
-          }
-        } else if (otherUsers[id]) {
+    // Listen for users
+    function initializeUserListener() {
+      // Clear existing users
+      Object.keys(otherUsers).forEach(id => {
+        if (otherUsers[id].marker._map) {
           map.removeLayer(otherUsers[id].marker);
-          delete otherUsers[id];
         }
       });
-      updateVisibleUsers();
-      if (beaconOn && soundOn) updateBeep();
-    }, error => console.error('Firestore snapshot error:', error));
+      otherUsers = {};
 
-    // Initial location request
+      onSnapshot(collection(db, 'users'), snapshot => {
+        const now = new Date().getTime();
+        const staleThreshold = 30 * 1000; // 30 seconds
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          const id = doc.id;
+          if (id === userId) return;
+
+          const timestamp = data.timestamp ? data.timestamp.toDate().getTime() : 0;
+          if (data.beaconOn && (now - timestamp) <= staleThreshold) {
+            const latlng = [data.location.latitude, data.location.longitude];
+            const gender = data.gender || 'unknown';
+            const name = data.name || 'User';
+            if (otherUsers[id]) {
+              otherUsers[id].marker.setLatLng(latlng);
+              otherUsers[id].marker.setPopupContent(`${name} (${gender})`);
+              otherUsers[id].marker.setIcon(getMarkerIcon(gender));
+              otherUsers[id].location = data.location;
+              otherUsers[id].beaconOn = data.beaconOn;
+              otherUsers[id].gender = gender;
+              otherUsers[id].name = name;
+              otherUsers[id].timestamp = data.timestamp;
+              otherUsers[id].id = id;
+            } else {
+              otherUsers[id] = {
+                marker: L.marker(latlng, {
+                  icon: getMarkerIcon(gender)
+                }).bindPopup(`${name} (${gender})`),
+                location: data.location,
+                beaconOn: data.beaconOn,
+                gender: gender,
+                name: name,
+                timestamp: data.timestamp,
+                id: id
+              };
+              if (searchGender === 'all' || gender === searchGender) {
+                otherUsers[id].marker.addTo(map);
+              }
+            }
+          } else if (otherUsers[id]) {
+            if (otherUsers[id].marker._map) {
+              map.removeLayer(otherUsers[id].marker);
+            }
+            delete otherUsers[id];
+          }
+        });
+        updateVisibleUsers();
+        if (beaconOn && soundOn) updateBeep();
+      }, error => console.error('Firestore snapshot error:', error));
+    }
+
+    // Initialize
+    initializeUserListener();
     requestLocation();
   </script>
 </body>
