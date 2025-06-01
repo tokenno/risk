@@ -13,7 +13,13 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     #map { height: 100vh; width: 100vw; }
-    button { position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px; }
+    #toggleBeacon {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      padding: 10px;
+    }
   </style>
 </head>
 <body>
@@ -46,6 +52,7 @@
     let currentLon = 0;
     const markers = {};
     const lastBeepTimestamps = {};
+    let userMarker;
 
     // === Map ===
     const map = L.map('map').setView([0, 0], 15);
@@ -59,6 +66,14 @@
       watchId = navigator.geolocation.watchPosition(async (pos) => {
         currentLat = pos.coords.latitude;
         currentLon = pos.coords.longitude;
+
+        if (!userMarker) {
+          userMarker = L.marker([currentLat, currentLon], {icon: L.icon({iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png'})}).addTo(map);
+          map.setView([currentLat, currentLon], 16);
+        } else {
+          userMarker.setLatLng([currentLat, currentLon]);
+        }
+
         await db.collection("users").doc(userId).set({
           lat: currentLat,
           lon: currentLon,
@@ -74,8 +89,13 @@
     });
 
     // === Toggle Beacon ===
+    let audioCtx;
     function toggleBeacon() {
+      if (!audioCtx) audioCtx = new AudioContext();
+
       beaconActive = !beaconActive;
+      document.getElementById('toggleBeacon').textContent = beaconActive ? 'Beacon ON' : 'Beacon OFF';
+
       db.collection("users").doc(userId).set({
         lat: currentLat,
         lon: currentLon,
@@ -94,7 +114,7 @@
       clearInterval(localBeepInterval);
     }
     function playBeep(freq, duration) {
-      const audioCtx = new AudioContext();
+      if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = "sine";
@@ -137,6 +157,8 @@
     }
 
     function triggerSpatialBeep(id, lat, lon) {
+      if (!audioCtx) return;
+
       const now = Date.now();
       if (lastBeepTimestamps[id] && now - lastBeepTimestamps[id] < 1000) return;
       lastBeepTimestamps[id] = now;
@@ -144,7 +166,6 @@
       const dx = (lon - currentLon) * 1000;
       const dy = (lat - currentLat) * 1000;
 
-      const audioCtx = new AudioContext();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       const panner = audioCtx.createPanner();
