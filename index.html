@@ -11,7 +11,7 @@
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
     #distance { text-align: center; margin: 10px; display: none; }
-    #retry-button, #beacon-button, #sound-button, #test-sound-button { display: block; margin: 10px auto; padding: 10px; }
+    #retry-button, #beacon-button, #sound-button, #test-sound-button, #skip-location-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
     @keyframes flash { 50% { opacity: 0; } }
@@ -25,10 +25,10 @@
 <body>
   <div id="status">Getting your location...</div>
   <div id="permission-message">
-    <h2>Location Permission Required</h2>
-    <p>This app needs your location to work properly.</p>
-    <p>Please enable location access in your browser settings and retry.</p>
+    <h2>Location Issue</h2>
+    <p id="error-message">Unable to get your location. Please enable location access or skip to use a default location.</p>
     <button id="retry-button">Retry Location</button>
+    <button id="skip-location-button">Skip Location (Use Default)</button>
   </div>
   <input id="name-input" type="text" placeholder="Enter your name" class="hidden" maxlength="20">
   <select id="gender-select" class="hidden">
@@ -96,11 +96,14 @@
     let searchGender = 'all'; // Default search all
     let lockedUserId = ''; // No locked user
     let lastBeaconOn = false; // Track beacon for zoom
+    let locationTimeout = null;
 
     // DOM elements
     const statusDiv = document.getElementById('status');
     const permissionMessage = document.getElementById('permission-message');
+    const errorMessage = document.getElementById('error-message');
     const retryButton = document.getElementById('retry-button');
+    const skipLocationButton = document.getElementById('skip-location-button');
     const beaconButton = document.getElementById('beacon-button');
     const soundButton = document.getElementById('sound-button');
     const testSoundButton = document.getElementById('test-sound-button');
@@ -121,56 +124,115 @@
       });
     }
 
-    // Request location
-    function requestLocation() {
-      statusDiv.textContent = 'Getting your location...';
+    // Show UI after location is acquired or skipped
+    function showUI() {
+      statusDiv.className = 'hidden';
+      nameInput.className = '';
+      genderSelect.className = '';
+      searchGenderSelect.className = '';
+      lockUserSelect.className = '';
+      soundButton.className = '';
+      testSoundButton.className = '';
       permissionMessage.style.display = 'none';
-      try {
-        navigator.geolocation.watchPosition(
-          position => {
-            userPosition = [position.coords.latitude, position.coords.longitude];
-            statusDiv.className = 'hidden';
-            nameInput.className = '';
-            genderSelect.className = '';
-            searchGenderSelect.className = '';
-            lockUserSelect.className = '';
-            soundButton.className = '';
-            testSoundButton.className = '';
-            updateUserLocation();
-            // Zoom only when beacon is first turned ON
-            if (beaconOn && !lastBeaconOn) {
-              map.setView(userPosition, 15);
-            }
-            lastBeaconOn = beaconOn;
-            console.log('Location acquired:', userPosition);
-          },
-          error => {
-            statusDiv.className = 'hidden';
-            permissionMessage.style.display = 'block';
-            console.error('Location error:', error.message, 'Code:', error.code);
-            switch (error.code) {
-              case error.PERMISSION_DENIED:
-                permissionMessage.querySelector('p').textContent = 'Location access denied. Please enable location in your browser settings.';
-                break;
-              case error.POSITION_UNAVAILABLE:
-                permissionMessage.querySelector('p').textContent = 'Location unavailable. Ensure GPS is enabled and try again.';
-                break;
-              case error.TIMEOUT:
-                permissionMessage.querySelector('p').textContent = 'Location request timed out. Please try again.';
-                break;
-              default:
-                permissionMessage.querySelector('p').textContent = 'An error occurred while getting your location.';
-            }
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 } // 10s timeout, no cached position
-        );
-      } catch (e) {
+    }
+
+    // Request location
+    function requestLocation(useWatch = true) {
+      statusDiv.textContent = 'Getting your location...';
+      statusDiv.className = '';
+      permissionMessage.style.display = 'none';
+      clearTimeout(locationTimeout);
+
+      // Timeout to show error if location takes too long
+      locationTimeout = setTimeout(() => {
         statusDiv.className = 'hidden';
         permissionMessage.style.display = 'block';
-        permissionMessage.querySelector('p').textContent = 'Geolocation not supported by your browser.';
+        errorMessage.textContent = 'Location request taking too long. Please enable location or skip to use a default location.';
+        console.warn('Location request timed out after 5 seconds');
+      }, 5000);
+
+      if (!navigator.geolocation) {
+        clearTimeout(locationTimeout);
+        statusDiv.className = 'hidden';
+        permissionMessage.style.display = 'block';
+        errorMessage.textContent = 'Geolocation not supported by your browser. Please skip to use a default location.';
+        console.error('Geolocation not supported');
+        return;
+      }
+
+      const locationHandler = (position) => {
+        clearTimeout(locationTimeout);
+        userPosition = [position.coords.latitude, position.coords.longitude];
+        showUI();
+        updateUserLocation();
+        if (beaconOn && !lastBeaconOn) {
+          map.setView(userPosition, 15);
+        }
+        lastBeaconOn = beaconOn;
+        console.log('Location acquired:', userPosition);
+      };
+
+      const errorHandler = (error) => {
+        clearTimeout(locationTimeout);
+        statusDiv.className = 'hidden';
+        permissionMessage.style.display = 'block';
+        console.error('Location error:', error.message, 'Code:', error.code);
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage.textContent = 'Location access denied. Please enable location in your browser settings or skip.';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage.textContent = 'Location unavailable. Ensure GPS is enabled or skip to use a default location.';
+            break;
+          case error.TIMEOUT:
+            errorMessage.textContent = 'Location request timed out. Please retry or skip.';
+            break;
+          default:
+            errorMessage.textContent = 'An error occurred while getting your location. Please retry or skip.';
+        }
+        // Fallback to getCurrentPosition if watchPosition fails
+        if (useWatch) {
+          console.log('Falling back to getCurrentPosition');
+          navigator.geolocation.getCurrentPosition(locationHandler, errorHandler, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+          });
+        }
+      };
+
+      try {
+        if (useWatch) {
+          navigator.geolocation.watchPosition(locationHandler, errorHandler, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+          });
+        } else {
+          navigator.geolocation.getCurrentPosition(locationHandler, errorHandler, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+          });
+        }
+      } catch (e) {
+        clearTimeout(locationTimeout);
+        statusDiv.className = 'hidden';
+        permissionMessage.style.display = 'block';
+        errorMessage.textContent = 'Geolocation error. Please skip to use a default location.';
         console.error('Geolocation error:', e);
       }
     }
+
+    // Skip location (use default)
+    skipLocationButton.addEventListener('click', () => {
+      clearTimeout(locationTimeout);
+      userPosition = [40.7128, -74.0060]; // Default: New York City
+      console.log('Using default location:', userPosition);
+      showUI();
+      updateUserLocation();
+      map.setView(userPosition, 15);
+    });
 
     // Update user location and status
     async function updateUserLocation() {
@@ -183,7 +245,6 @@
             name: userName,
             timestamp: new Date()
           });
-          // Update or create user marker
           if (userMarker) {
             userMarker.setLatLng(userPosition);
             userMarker.setPopupContent(`${userName} (${userGender})`);
@@ -226,13 +287,11 @@
       updateUserLocation();
     });
 
-    // Update search gender
     searchGenderSelect.addEventListener('change', () => {
       searchGender = searchGenderSelect.value;
       updateVisibleUsers();
     });
 
-    // Update locked user
     lockUserSelect.addEventListener('change', () => {
       lockedUserId = lockUserSelect.value;
       if (beaconOn && soundOn) {
@@ -242,7 +301,6 @@
       }
     });
 
-    // Toggle beacon
     beaconButton.addEventListener('click', () => {
       if (!userGender || !userName) {
         alert('Please enter your name and select your gender first.');
@@ -258,7 +316,6 @@
       }
     });
 
-    // Toggle sound
     soundButton.addEventListener('click', () => {
       soundOn = !soundOn;
       soundButton.textContent = `Sound ${soundOn ? 'ON' : 'OFF'}`;
@@ -269,7 +326,6 @@
       }
     });
 
-    // Test sound
     testSoundButton.addEventListener('click', () => {
       if (!audioContext) {
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -287,10 +343,8 @@
       console.log('Test sound played');
     });
 
-    // Retry location
-    retryButton.addEventListener('click', requestLocation);
+    retryButton.addEventListener('click', () => requestLocation(true));
 
-    // Web Audio API for beep
     function startBeep() {
       if (!audioContext) {
         try {
@@ -324,7 +378,6 @@
         return;
       }
 
-      // Find closest or locked user
       let minDistance = Infinity;
       let closestUser = null;
       let targetUserId = lockedUserId || null;
@@ -340,7 +393,6 @@
         }
       });
 
-      // Beep within 20 meters, 20-180 BPM
       const maxDistance = 20;
       const minDistanceThreshold = 5;
       const minFrequency = 20 / 60; // 20 BPM = 0.33 Hz
@@ -380,7 +432,6 @@
       }
     }
 
-    // Update visible users
     function updateVisibleUsers() {
       const now = new Date().getTime();
       const staleThreshold = 30 * 1000; // 30 seconds
@@ -401,7 +452,6 @@
           }
         }
       });
-      // Update lock user dropdown
       lockUserSelect.innerHTML = '<option value="">No Lock</option>';
       Object.keys(otherUsers).forEach(id => {
         const user = otherUsers[id];
@@ -417,9 +467,7 @@
       }
     }
 
-    // Listen for users
     function initializeUserListener() {
-      // Clear existing users
       Object.keys(otherUsers).forEach(id => {
         if (otherUsers[id].marker._map) {
           map.removeLayer(otherUsers[id].marker);
@@ -468,33 +516,19 @@
             }
           } else if (otherUsers[id]) {
             if (otherUsers[id].marker._map) {
-              map.removeLayer(otherUsersUsers[id].marker[id].marker);
+              map.removeLayer(otherUsers[id].marker);
             }
             delete otherUsers[id];
           }
         });
-       );
-            }
-            delete otherUsers[id];
-          }
-        updateVisibleUsers(); });
-       
-        if (beaconOn && soundOn) updateBeep();
-      }, error => console.error('Firestore snapshot error:', error));
-    }
- updateVisibleUsers();
+        updateVisibleUsers();
         if (beaconOn && soundOn) updateBeep();
       }, error => console.error('Firestore snapshot error:', error));
     }
 
     // Initialize
     initializeUserListener();
-    request
-    // Initialize
-    initializeUserListener();
     requestLocation();
   </script>
 </body>
-</htmlLocation();
-  </script>
-</body>>
+</html>
