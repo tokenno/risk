@@ -3,292 +3,388 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Map Application</title>
-  <!-- Leaflet CSS with corrected integrity hash -->
+  <title>Live Map with Chat</title>
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
-        crossorigin="" />
-  <!-- Vue.js production build -->
+        crossorigin=""/>
+  <!-- Vue.js Production Build -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 20px;
-      max-width: 800px;
+      max-width: 1000px;
       margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 20px;
     }
     #map {
-      height: 400px;
+      height: 500px;
       width: 100%;
       border: 1px solid #ccc;
+      border-radius: 8px;
     }
     .map-container {
-      position: relative;
-      height: 400px;
-      width: 100%;
-      margin-bottom: 20px;
+      grid-column: 1;
     }
-    .error-message, .retry-button {
-      text-align: center;
-      margin: 10px 0;
+    .panel {
+      grid-column: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
     }
-    .error-message p {
-      color: #d32f2f;
-      font-weight: bold;
+    .user-list, .messaging {
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 8px;
+      background: #f9f9f9;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .user-card {
+      padding: 10px;
+      margin: 5px 0;
+      background: white;
+      border-radius: 5px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+    }
+    .user-card:hover {
+      background: #eef;
+    }
+    .user-card.active {
+      background: #007bff;
+      color: white;
+    }
+    .message {
+      margin: 8px 0;
+      padding: 8px;
+      background: white;
+      border-radius: 4px;
+    }
+    .message-input {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    input {
+      flex-grow: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
     }
     button {
-      padding: 10px 20px;
-      margin: 5px;
-      cursor: pointer;
-      background-color: #007bff;
+      padding: 8px 15px;
+      background: #007bff;
       color: white;
       border: none;
       border-radius: 4px;
+      cursor: pointer;
     }
     button:hover {
-      background-color: #0056b3;
+      background: #0056b3;
     }
-    .status-container, .nearby-users {
-      margin-top: 20px;
+    .proximity-alert {
+      animation: pulse 1s infinite;
+      background: #ff4444;
+      color: white;
     }
-    .status-container p {
-      margin: 5px 0;
-    }
-    .nearby-users h3 {
-      margin-bottom: 10px;
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
     }
   </style>
 </head>
 <body>
   <div id="app">
-    <div v-if="initializing">
-      <p>Initializing application...</p>
-    </div>
-
-    <div v-if="authError" class="error-message">
-      <p>Authentication Error</p>
-      <p>Unable to authenticate. Please try again.</p>
-      <button class="retry-button" @click="retryAuth">Retry</button>
-    </div>
-
-    <div v-if="mapError" class="error-message">
-      <p>Map Error</p>
-      <p>{{ mapErrorMessage }}</p>
-      <button class="retry-button" @click="retryMap">Retry</button>
-    </div>
-    <div v-else class="map-container">
+    <div class="map-container">
       <div id="map"></div>
     </div>
-
-    <div v-if="locationError" class="error-message">
-      <p>Location Error</p>
-      <p>{{ locationErrorMessage }}</p>
-      <button class="retry-button" @click="retryLocation">Retry</button>
-    </div>
-
-    <div class="status-container">
-      <div>
-        <p>Status: <span>{{ status }}</span></p>
-        <p>User: <span>{{ user }}</span></p>
+    
+    <div class="panel">
+      <div class="status-container">
+        <h2>{{ user }} <small>({{ status }})</small></h2>
+        <div>
+          <button @click="goOnline">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
+          <button @click="setName">Change Name</button>
+        </div>
+        <p>Your location: {{ userLocation ? `${userLocation[0].toFixed(4)}, ${userLocation[1].toFixed(4)}` : 'Unknown' }}</p>
       </div>
-      <div>
-        <button @click="goOnline">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
-        <button @click="setName">Set Name</button>
-      </div>
-      <button @click="refreshLocation">Refresh Location</button>
-    </div>
 
-    <div class="nearby-users">
-      <h3>Nearby Users (1km)</h3>
-      <p v-if="loadingNearby">Loading nearby users...</p>
-      <ul v-else>
-        <li v-for="nearbyUser in nearbyUsers" :key="nearbyUser.id">
-          {{ nearbyUser.name }} ({{ nearbyUser.distance }}m)
-        </li>
-      </ul>
+      <div class="user-list">
+        <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
+        <div v-if="loadingNearby">Loading...</div>
+        <div v-else>
+          <div v-for="user in nearbyUsers" 
+               :key="user.id"
+               class="user-card"
+               :class="{ active: selectedUser?.id === user.id, 'proximity-alert': user.distance < 20 }"
+               @click="selectUser(user)">
+            <span>{{ user.name }}</span>
+            <span>{{ user.distance }}m</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="messaging" v-if="selectedUser">
+        <h3>Chat with {{ selectedUser.name }}</h3>
+        <div class="message-box">
+          <div v-for="msg in messages" :key="msg.timestamp" class="message">
+            <strong>{{ msg.sender }}:</strong> {{ msg.text }}
+          </div>
+        </div>
+        <div class="message-input">
+          <input v-model="newMessage" @keyup.enter="sendMessage" placeholder="Type a message...">
+          <button @click="sendMessage">Send</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Leaflet JS with corrected integrity hash -->
+  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
+  
   <script>
     const { createApp } = Vue;
 
     createApp({
       data() {
         return {
-          initializing: true,
-          authError: false,
-          mapError: false,
-          mapErrorMessage: 'Failed to load map. Please check your connection.',
-          locationError: false,
-          locationErrorMessage: 'Unable to retrieve location.',
           status: 'OFFLINE',
-          user: 'loading...',
-          map: null,
+          user: 'Anonymous',
           userLocation: null,
-          loadingNearby: true,
+          map: null,
           nearbyUsers: [],
+          loadingNearby: true,
+          selectedUser: null,
+          messages: [],
+          newMessage: '',
+          currentUserId: null,
+          proximityAlert: null,
+          userMarkers: {},
+          firebaseInitialized: false
         };
       },
-      mounted() {
-        // Ensure Leaflet is loaded before initializing
-        if (typeof L === 'undefined') {
-          console.error('Leaflet not loaded');
-          this.mapError = true;
-          this.mapErrorMessage = 'Failed to load map library. Please check your connection.';
-          this.initializeApp();
-          return;
-        }
-        this.initializeApp();
+      async mounted() {
+        await this.initializeFirebase();
+        this.initMap();
+        this.startLocationTracking();
       },
       methods: {
-        async initializeApp() {
+        async initializeFirebase() {
+          // Replace with your Firebase config
+          const firebaseConfig = {
+            apiKey: "AIzaSyABC123...",
+            authDomain: "your-project.firebaseapp.com",
+            databaseURL: "https://your-project.firebaseio.com",
+            projectId: "your-project",
+            storageBucket: "your-project.appspot.com",
+            messagingSenderId: "1234567890"
+          };
+
+          firebase.initializeApp(firebaseConfig);
+          this.firebaseInitialized = true;
+
           try {
-            setTimeout(() => {
-              this.initializing = false;
-              this.user = 'Anonymous';
-              this.initMap();
-              this.getUserLocation();
-              this.loadNearbyUsers();
-            }, 1000);
+            const userCredential = await firebase.auth().signInAnonymously();
+            this.currentUserId = userCredential.user.uid;
+            console.log("Connected as user:", this.currentUserId);
           } catch (error) {
-            console.error('App initialization failed:', error);
-            this.authError = true;
+            console.error("Firebase auth error:", error);
           }
         },
+
         initMap() {
-          if (!document.getElementById('map')) {
-            console.error('Map container not found');
-            this.mapError = true;
-            this.mapErrorMessage = 'Map container not found.';
-            return;
-          }
-
-          if (typeof L === 'undefined') {
-            console.error('Leaflet not loaded');
-            this.mapError = true;
-            this.mapErrorMessage = 'Failed to load map library. Please check your connection.';
-            return;
-          }
-
-          try {
-            this.map = L.map('map').setView([51.505, -0.09], 13); // Default: London
-            const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-              maxZoom: 19,
-            });
-
-            tileLayer.on('tileerror', (error) => {
-              console.error('Tile loading error:', error);
-              this.mapError = true;
-              this.mapErrorMessage = 'Failed to load map tiles. Please check your connection.';
-              L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.de/copyright">OpenStreetMap</a>',
-                maxZoom: 19,
-              }).addTo(this.map);
-            });
-
-            tileLayer.addTo(this.map);
-            this.mapError = false;
-
-            setTimeout(() => {
-              if (this.map) {
-                this.map.invalidateSize();
-              }
-            }, 100);
-          } catch (error) {
-            console.error('Map initialization failed:', error);
-            this.mapError = true;
-            this.mapErrorMessage = 'Map initialization failed: ' + error.message;
-          }
+          this.map = L.map('map').setView([51.505, -0.09], 13);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+          }).addTo(this.map);
         },
-        getUserLocation() {
+
+        startLocationTracking() {
           if (!navigator.geolocation) {
-            console.error('Geolocation not supported by this browser.');
-            this.locationError = true;
-            this.locationErrorMessage = 'Geolocation is not supported by your browser.';
+            console.error("Geolocation not supported");
             return;
           }
 
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
+          navigator.geolocation.watchPosition(
+            position => {
               const { latitude, longitude } = position.coords;
               this.userLocation = [latitude, longitude];
-              this.locationError = false;
-              this.locationErrorMessage = '';
+              
+              if (this.status === 'ONLINE') {
+                this.updateUserLocation();
+              }
+
               if (this.map) {
                 this.map.setView(this.userLocation, 15);
-                L.marker(this.userLocation)
-                  .addTo(this.map)
-                  .bindPopup('You are here')
-                  .openPopup();
-                this.map.invalidateSize();
+                if (!this.userMarker) {
+                  this.userMarker = L.marker(this.userLocation)
+                    .addTo(this.map)
+                    .bindPopup("You are here")
+                    .openPopup();
+                } else {
+                  this.userMarker.setLatLng(this.userLocation);
+                }
               }
             },
-            (error) => {
-              console.error('Geolocation error:', error.message, error.code);
-              this.locationError = true;
-              switch (error.code) {
-                case error.PERMISSION_DENIED:
-                  this.locationErrorMessage = 'Location access denied. Please enable location permissions.';
-                  break;
-                case error.POSITION_UNAVAILABLE:
-                  this.locationErrorMessage = 'Location information is unavailable. Please try again.';
-                  break;
-                case error.TIMEOUT:
-                  this.locationErrorMessage = 'Location request timed out. Please try again.';
-                  break;
-                default:
-                  this.locationErrorMessage = 'An error occurred while retrieving location.';
-              }
+            error => {
+              console.error("Geolocation error:", error);
             },
-            {
-              timeout: 10000,
-              maximumAge: 0,
-              enableHighAccuracy: true,
-            }
+            { enableHighAccuracy: true }
           );
         },
-        retryAuth() {
-          this.authError = false;
-          this.initializeApp();
+
+        updateUserLocation() {
+          if (!this.firebaseInitialized || !this.currentUserId || !this.userLocation) return;
+          
+          firebase.database().ref(`users/${this.currentUserId}`).set({
+            lat: this.userLocation[0],
+            lng: this.userLocation[1],
+            name: this.user,
+            lastOnline: Date.now()
+          });
         },
-        retryMap() {
-          this.mapError = false;
-          this.mapErrorMessage = 'Failed to load map. Please check your connection.';
-          if (this.map) {
-            this.map.remove();
+
+        listenForNearbyUsers() {
+          firebase.database().ref('users').on('value', snapshot => {
+            const allUsers = snapshot.val() || {};
+            
+            this.nearbyUsers = Object.entries(allUsers)
+              .filter(([id]) => id !== this.currentUserId)
+              .map(([id, user]) => {
+                const distance = this.calculateDistance(
+                  this.userLocation,
+                  [user.lat, user.lng]
+                );
+                
+                // Update or create marker
+                if (!this.userMarkers[id]) {
+                  this.userMarkers[id] = L.marker([user.lat, user.lng])
+                    .addTo(this.map)
+                    .bindPopup(`${user.name || 'User'}`);
+                } else {
+                  this.userMarkers[id].setLatLng([user.lat, user.lng]);
+                }
+                
+                return {
+                  id,
+                  name: user.name || 'Anonymous',
+                  distance: Math.round(distance),
+                  position: [user.lat, user.lng]
+                };
+              })
+              .filter(user => user.distance < 1000) // Show only within 1km
+              .sort((a, b) => a.distance - b.distance);
+            
+            this.loadingNearby = false;
+            this.checkProximityAlerts();
+          });
+        },
+
+        calculateDistance(pos1, pos2) {
+          const [lat1, lon1] = pos1;
+          const [lat2, lon2] = pos2;
+          const R = 6371e3; // Earth radius in meters
+          const φ1 = lat1 * Math.PI/180;
+          const φ2 = lat2 * Math.PI/180;
+          const Δφ = (lat2-lat1) * Math.PI/180;
+          const Δλ = (lon2-lon1) * Math.PI/180;
+
+          const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                   Math.cos(φ1) * Math.cos(φ2) *
+                   Math.sin(Δλ/2) * Math.sin(Δλ/2);
+          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+          return R * c;
+        },
+
+        checkProximityAlerts() {
+          // Clear existing alert if any
+          if (this.proximityAlert) {
+            clearInterval(this.proximityAlert);
+            this.proximityAlert = null;
           }
-          this.initMap();
+
+          // Find closest user within 20m
+          const veryCloseUsers = this.nearbyUsers.filter(u => u.distance < 20);
+          if (veryCloseUsers.length === 0) return;
+
+          // Play sound with increasing frequency as distance decreases
+          const closestUser = veryCloseUsers.reduce((closest, current) => 
+            current.distance < closest.distance ? current : closest
+          );
+
+          const audio = new Audio('https://assets.mixkit.co/sfx/preview/mixkit-alarm-digital-clock-beep-989.mp3');
+          const baseInterval = 1000; // 1 second
+          
+          this.proximityAlert = setInterval(() => {
+            const speedFactor = 1 + (20 - closestUser.distance) / 5;
+            audio.playbackRate = speedFactor;
+            audio.play();
+          }, baseInterval / speedFactor);
         },
-        retryLocation() {
-          this.locationError = false;
-          this.locationErrorMessage = 'Unable to retrieve location.';
-          this.getUserLocation();
-        },
+
         goOnline() {
           this.status = this.status === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
+          if (this.status === 'ONLINE') {
+            this.updateUserLocation();
+            this.listenForNearbyUsers();
+          } else {
+            firebase.database().ref(`users/${this.currentUserId}`).remove();
+            firebase.database().ref('users').off();
+          }
         },
+
         setName() {
-          const newName = prompt('Enter your name:') || 'Anonymous';
-          this.user = newName;
+          const newName = prompt('Enter your name:', this.user);
+          if (newName !== null) {
+            this.user = newName || 'Anonymous';
+            if (this.status === 'ONLINE') {
+              this.updateUserLocation();
+            }
+          }
         },
-        refreshLocation() {
-          this.getUserLocation();
+
+        selectUser(user) {
+          this.selectedUser = user;
+          this.loadMessages();
         },
-        async loadNearbyUsers() {
-          this.loadingNearby = true;
-          setTimeout(() => {
-            this.nearbyUsers = [
-              { id: 1, name: 'User1', distance: 500 },
-              { id: 2, name: 'User2', distance: 750 },
-            ];
-            this.loadingNearby = false;
-          }, 1000);
+
+        loadMessages() {
+          if (!this.selectedUser) return;
+          
+          const chatId = [this.currentUserId, this.selectedUser.id].sort().join('_');
+          firebase.database().ref(`messages/${chatId}`).limitToLast(50).on('value', snapshot => {
+            const messagesData = snapshot.val() || {};
+            this.messages = Object.entries(messagesData)
+              .map(([id, msg]) => ({ id, ...msg }))
+              .sort((a, b) => a.timestamp - b.timestamp);
+          });
+        },
+
+        sendMessage() {
+          if (!this.newMessage.trim() || !this.selectedUser) return;
+          
+          const chatId = [this.currentUserId, this.selectedUser.id].sort().join('_');
+          firebase.database().ref(`messages/${chatId}`).push({
+            text: this.newMessage,
+            sender: this.user,
+            timestamp: Date.now()
+          });
+          
+          this.newMessage = '';
         }
       }
     }).mount('#app');
