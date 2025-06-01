@@ -16,7 +16,6 @@
       max-width: 800px;
       margin: 0 auto;
     }
-    /* Map container styling to fix partial display */
     #map {
       height: 400px;
       width: 100%;
@@ -28,7 +27,6 @@
       width: 100%;
       margin-bottom: 20px;
     }
-    /* Center error messages and buttons */
     .error-message, .retry-button {
       text-align: center;
       margin: 10px 0;
@@ -49,7 +47,6 @@
     button:hover {
       background-color: #0056b3;
     }
-    /* Status and nearby users styling */
     .status-container, .nearby-users {
       margin-top: 20px;
     }
@@ -63,19 +60,16 @@
 </head>
 <body>
   <div id="app">
-    <!-- Initializing state -->
     <div v-if="initializing">
       <p>Initializing application...</p>
     </div>
 
-    <!-- Authentication Error -->
     <div v-if="authError" class="error-message">
       <p>Authentication Error</p>
       <p>Unable to authenticate. Please try again.</p>
       <button class="retry-button" @click="retryAuth">Retry</button>
     </div>
 
-    <!-- Map Section -->
     <div v-if="mapError" class="error-message">
       <p>Map Error</p>
       <p>Failed to load map. Please check your connection.</p>
@@ -85,14 +79,12 @@
       <div id="map"></div>
     </div>
 
-    <!-- Location Permissions -->
     <div v-if="locationError" class="error-message">
-      <p>Location Required</p>
-      <p>Please enable location permissions to use this app.</p>
+      <p>Location Error</p>
+      <p>{{ locationErrorMessage }}</p>
       <button class="retry-button" @click="retryLocation">Retry</button>
     </div>
 
-    <!-- User Status Section -->
     <div class="status-container">
       <div>
         <p>Status: <span>{{ status }}</span></p>
@@ -105,7 +97,6 @@
       <button @click="refreshLocation">Refresh Location</button>
     </div>
 
-    <!-- Nearby Users -->
     <div class="nearby-users">
       <h3>Nearby Users (1km)</h3>
       <p v-if="loadingNearby">Loading nearby users...</p>
@@ -129,6 +120,7 @@
           authError: false,
           mapError: false,
           locationError: false,
+          locationErrorMessage: 'Unable to retrieve location.',
           status: 'OFFLINE',
           user: 'loading...',
           map: null,
@@ -142,65 +134,116 @@
       },
       methods: {
         async initializeApp() {
-          // Simulate app initialization
-          setTimeout(() => {
-            this.initializing = false;
-            this.user = 'Anonymous';
-            this.initMap();
-            this.getUserLocation();
-            this.loadNearbyUsers();
-          }, 1000);
+          try {
+            setTimeout(() => {
+              this.initializing = false;
+              this.user = 'Anonymous';
+              this.initMap();
+              this.getUserLocation();
+              this.loadNearbyUsers();
+            }, 1000);
+          } catch (error) {
+            console.error('App initialization failed:', error);
+            this.authError = true;
+          }
         },
         initMap() {
+          if (!document.getElementById('map')) {
+            console.error('Map container not found');
+            this.mapError = true;
+            return;
+          }
+
           try {
-            // Initialize Leaflet map
             this.map = L.map('map').setView([51.505, -0.09], 13); // Default: London
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
               attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
               maxZoom: 19,
-            }).addTo(this.map);
+            });
+
+            tileLayer.on('tileerror', (error) => {
+              console.error('Tile loading error:', error);
+              this.mapError = true;
+              L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.de/copyright">OpenStreetMap</a>',
+                maxZoom: 19,
+              }).addTo(this.map);
+            });
+
+            tileLayer.addTo(this.map);
             this.mapError = false;
+
+            setTimeout(() => {
+              if (this.map) {
+                this.map.invalidateSize();
+              }
+            }, 100);
           } catch (error) {
             console.error('Map initialization failed:', error);
             this.mapError = true;
           }
         },
         getUserLocation() {
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                const { latitude, longitude } = position.coords;
-                this.userLocation = [latitude, longitude];
-                this.locationError = false;
-                // Center map on user location
-                if (this.map) {
-                  this.map.setView(this.userLocation, 15);
-                  L.marker(this.userLocation)
-                    .addTo(this.map)
-                    .bindPopup('You are here')
-                    .openPopup();
-                }
-              },
-              (error) => {
-                console.error('Geolocation error:', error);
-                this.locationError = true;
-              }
-            );
-          } else {
+          if (!navigator.geolocation) {
+            console.error('Geolocation not supported by this browser.');
             this.locationError = true;
+            this.locationErrorMessage = 'Geolocation is not supported by your browser.';
+            return;
           }
+
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const { latitude, longitude } = position.coords;
+              this.userLocation = [latitude, longitude];
+              this.locationError = false;
+              this.locationErrorMessage = '';
+              if (this.map) {
+                this.map.setView(this.userLocation, 15);
+                L.marker(this.userLocation)
+                  .addTo(this.map)
+                  .bindPopup('You are here')
+                  .openPopup();
+                this.map.invalidateSize();
+              }
+            },
+            (error) => {
+              console.error('Geolocation error:', error.message, error.code);
+              this.locationError = true;
+              switch (error.code) {
+                case error.PERMISSION_DENIED:
+                  this.locationErrorMessage = 'Location access denied. Please enable location permissions.';
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  this.locationErrorMessage = 'Location information is unavailable. Please try again.';
+                  break;
+                case error.TIMEOUT:
+                  this.locationErrorMessage = 'Location request timed out. Please try again.';
+                  break;
+                default:
+                  this.locationErrorMessage = 'An error occurred while retrieving location.';
+              }
+            },
+            {
+              timeout: 10000, // 10-second timeout
+              maximumAge: 0, // No cached position
+              enableHighAccuracy: true, // Request high accuracy
+            }
+          );
         },
         retryAuth() {
-          // Simulate authentication retry
           this.authError = false;
           this.initializeApp();
         },
         retryMap() {
           this.mapError = false;
+          if (this.map) {
+            this.map.remove();
+          }
           this.initMap();
         },
         retryLocation() {
           this.locationError = false;
+          this.locationErrorMessage = 'Unable to retrieve location.';
           this.getUserLocation();
         },
         goOnline() {
@@ -214,7 +257,6 @@
           this.getUserLocation();
         },
         async loadNearbyUsers() {
-          // Simulate loading nearby users
           this.loadingNearby = true;
           setTimeout(() => {
             this.nearbyUsers = [
