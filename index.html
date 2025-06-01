@@ -17,6 +17,11 @@
       50% { opacity: 0; }
     }
     #gender-select { display: block; margin: 10px auto; padding: 5px; }
+    /* Custom marker styles */
+    .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
+    .marker-female { background: pink; width: 12px; height: 12px; }
+    .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
+    .marker-you { background: red; border-radius: 50%; width: 12px; height: 12px; }
   </style>
 </head>
 <body>
@@ -85,6 +90,17 @@
     const soundButton = document.getElementById('sound-button');
     const genderSelect = document.getElementById('gender-select');
 
+    // Function to get marker icon based on gender
+    function getMarkerIcon(gender, isUser = false) {
+      const className = isUser ? 'marker-you' : `marker-${gender.replace('non-binary', 'nonbinary')}`;
+      return L.divIcon({
+        className: className,
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+        popupAnchor: [0, -6]
+      });
+    }
+
     // Request location
     function requestLocation() {
       statusDiv.textContent = 'Getting your location...';
@@ -125,18 +141,16 @@
         if (userMarker) {
           userMarker.setLatLng(userPosition);
           userMarker.setPopupContent(`You (${userGender})`);
+          userMarker.setIcon(getMarkerIcon(userGender, true));
         } else {
-          userMarker = L.circleMarker(userPosition, {
-            color: 'red',
-            radius: 10,
+          userMarker = L.marker(userPosition, {
+            icon: getMarkerIcon(userGender, true),
             className: beaconOn ? 'flashing' : ''
           }).addTo(map).bindPopup(`You (${userGender})`);
         }
         if (beaconOn) {
-          userMarker.setStyle({ className: 'flashing' });
+          userMarker.setIcon(getMarkerIcon(userGender, true));
           map.setView(userPosition, 15);
-        } else {
-          userMarker.setStyle({ className: '' });
         }
       }
     }
@@ -241,16 +255,18 @@
 
         if (data.beaconOn && data.location) {
           const latlng = [data.location.latitude, data.location.longitude];
+          const gender = data.gender || 'unknown';
           if (otherUsers[id]) {
             otherUsers[id].marker.setLatLng(latlng);
-            otherUsers[id].marker.setPopupContent(`User (${data.gender || 'Unknown'})`);
+            otherUsers[id].marker.setPopupContent(`User (${gender})`);
+            otherUsers[id].marker.setIcon(getMarkerIcon(gender));
             otherUsers[id].location = data.location;
             otherUsers[id].beaconOn = data.beaconOn;
           } else {
             otherUsers[id] = {
-              marker: L.circleMarker(latlng, { color: 'blue', radius: 8 })
-                .addTo(map)
-                .bindPopup(`User (${data.gender || 'Unknown'})`),
+              marker: L.marker(latlng, {
+                icon: getMarkerIcon(gender)
+              }).addTo(map).bindPopup(`User (${gender})`),
               location: data.location,
               beaconOn: data.beaconOn
             };
