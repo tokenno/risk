@@ -5,358 +5,401 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Meet with Sound</title>
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- GeoFire for geohash queries -->
+  <script src="https://unpkg.com/geofire-common@6.0.0/dist/index.min.js"></script>
+  <!-- Leaflet JS (loaded synchronously in global scope) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
-    #permission-message { text-align: center; color: red; display: none; }
-    #distance { text-align: center; margin: 10px; display: none; }
-    #retry-button, #beacon-button, #sound-button, #test-sound-button, #skip-location-button { display: block; margin: 10px auto; padding: 10px; }
+    #permission-message, #auth-error, #map-error { text-align: center; color: red; display: none; }
+    #retry-button, #beacon-button, #retry-auth-button, #retry-map-button, #set-name-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
-    @keyframes flash { 50% { opacity: 0; } }
-    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: block; margin: 10px auto; padding: 5px; }
-    .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
-    .marker-female { background: pink; width: 12px; height: 12px; }
-    .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
-    .marker-you { background: red; border-radius: 50%; width: 12px; height: 12px; }
+    @keyframes flash {
+      50% { opacity: 0; }
+    }
+    #nearby-users, #search-users { margin: 10px; }
+    #message-input, #search-input, #name-input { width: 80%; padding: 5px; }
+    #message-list { margin: 10px; max-height: 200px; overflow-y: auto; }
   </style>
 </head>
 <body>
-  <div id="status">Getting your location...</div>
-  <div id="permission-message">
-    <h2>Location Issue</h2>
-    <p id="error-message">Unable to get your location. Please enable location access or skip to use a default location.</p>
-    <button id="retry-button">Retry Location</button>
-    <button id="skip-location-button">Skip Location (Use Default)</button>
+  <div id="status">Initializing...</div>
+  <div id="auth-error" class="hidden">
+    <h2>Authentication Error</h2>
+    <p id="auth-error-message">Unable to authenticate. Please try again.</p>
+    <button id="retry-auth-button">Retry Authentication</button>
   </div>
-  <input id="name-input" type="text" placeholder="Enter your name" class="hidden" maxlength="20">
-  <select id="gender-select" class="hidden">
-    <option value="" disabled selected>Select your gender</option>
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-    <option value="non-binary">Non-binary</option>
-  </select>
-  <select id="search-gender-select" class="hidden">
-    <option value="all">All Genders</option>
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-    <option value="non-binary">Non-binary</option>
-  </select>
-  <select id="lock-user-select" class="hidden">
-    <option value="">No Lock</option>
-  </select>
-  <button id="beacon-button" class="hidden" disabled>Beacon OFF</button>
-  <button id="sound-button" class="hidden">Sound OFF</button>
-  <button id="test-sound-button" class="hidden">Test Sound</button>
-  <div id="distance" class="hidden">Distance to closest user: N/A</div>
+  <div id="map-error" class="hidden">
+    <h2>Map Loading Error</h2>
+    <p>Failed to load the map. Please check your internet connection and try again.</p>
+    <button id="retry-map-button">Retry Map</button>
+  </div>
+  <div id="permission-message" class="hidden">
+    <h2>Location Permission Required</h2>
+    <p>This app needs your location to work properly.</p>
+    <p>Please allow location access in your browser settings.</p>
+    <button id="retry-button">Retry Location</button>
+  </div>
+  <input id="name-input" type="text" placeholder="Enter your name..." class="hidden">
+  <button id="set-name-button" class="hidden">Set Name</button>
+  <button id="beacon-button" class="hidden">Beacon OFF</button>
+  <div id="search-users" class="hidden">
+    <h3>Search Users by Name</h3>
+    <input id="search-input" type="text" placeholder="Enter name to search...">
+    <button id="search-button">Search</button>
+    <ul id="search-users-list"></ul>
+  </div>
+  <div id="nearby-users" class="hidden">
+    <h3>Nearby Users (within 1 km)</h3>
+    <ul id="nearby-users-list"></ul>
+  </div>
+  <div id="message-list"></div>
+  <input id="message-input" type="text" placeholder="Type a message..." class="hidden">
+  <button id="send-message" class="hidden">Send</button>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
   <script type="module">
-    // Import Firebase
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
-    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint, query, orderBy, startAt, endAt, getDocs, where } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
+    import { getAuth, signInAnonymously } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
 
-    // Firebase config
+    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
       projectId: "risk-ec382",
-      storageBucket: "risk-ec382.appspot.com",
+      storageBucket: "risk-ec382.firebasestorage.app",
       messagingSenderId: "177105151944",
       appId: "1:177105151944:web:758b928eb83ccb894902fd",
       measurementId: "G-2LKEG2N7ZD"
     };
 
     // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    let app;
+    try {
+      app = initializeApp(firebaseConfig);
+    } catch (error) {
+      console.error('Firebase init error:', error);
+      alert('Failed to initialize Firebase. Check your configuration.');
+    }
+    const db = app ? getFirestore(app) : null;
+    const auth = app ? getAuth(app) : null;
 
-    // Leaflet JS
-    import 'https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.min.js';
-
-    // Map setup
-    const map = L.map('map').setView([0, 0], 13);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors'
-    }).addTo(map);
-
-    // User variables
+    // User data
     let userPosition = null;
     let userMarker = null;
+    let map = null;
     let otherUsers = {};
     let beaconOn = false;
-    let soundOn = false;
     let audioContext = null;
     let oscillator = null;
-    let userId = Math.random().toString(36).substring(2); // Random ID
-    let userGender = ''; // No default gender
-    let userName = ''; // No default name
-    let searchGender = 'all'; // Default search all
-    let lockedUserId = ''; // No locked user
-    let lastBeaconOn = false; // Track beacon for zoom
-    let locationTimeout = null;
+    let userId = null;
+    let selectedRecipientId = null;
 
     // DOM elements
     const statusDiv = document.getElementById('status');
+    const authErrorDiv = document.getElementById('auth-error');
+    const authErrorMessage = document.getElementById('auth-error-message');
+    const mapErrorDiv = document.getElementById('map-error');
+    const retryAuthButton = document.getElementById('retry-auth-button');
+    const retryMapButton = document.getElementById('retry-map-button');
     const permissionMessage = document.getElementById('permission-message');
-    const errorMessage = document.getElementById('error-message');
     const retryButton = document.getElementById('retry-button');
-    const skipLocationButton = document.getElementById('skip-location-button');
-    const beaconButton = document.getElementById('beacon-button');
-    const soundButton = document.getElementById('sound-button');
-    const testSoundButton = document.getElementById('test-sound-button');
-    const genderSelect = document.getElementById('gender-select');
     const nameInput = document.getElementById('name-input');
-    const searchGenderSelect = document.getElementById('search-gender-select');
-    const lockUserSelect = document.getElementById('lock-user-select');
-    const distanceDiv = document.getElementById('distance');
+    const setNameButton = document.getElementById('set-name-button');
+    const beaconButton = document.getElementById('beacon-button');
+    const searchInput = document.getElementById('search-input');
+    const searchButton = document.getElementById('search-button');
+    const searchUsersList = document.getElementById('search-users-list');
+    const nearbyUsersList = document.getElementById('nearby-users-list');
+    const messageInput = document.getElementById('message-input');
+    const sendMessageButton = document.getElementById('send-message');
+    const messageList = document.getElementById('message-list');
 
-    // Marker icon based on gender
-    function getMarkerIcon(gender, isUser = false) {
-      const className = isUser ? 'marker-you' : `marker-${gender.replace('non-binary', 'nonbinary')}`;
-      return L.divIcon({
-        className: className,
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
-        popupAnchor: [0, -6]
-      });
+    // Initialize map
+    function initMap() {
+      if (typeof L === 'undefined') {
+        console.error('Leaflet not loaded');
+        statusDiv.className = 'hidden';
+        mapErrorDiv.className = '';
+        return false;
+      }
+      map = L.map('map').setView([0, 0], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors'
+      }).addTo(map);
+      return true;
     }
 
-    // Show UI after location is acquired or skipped
-    function showUI() {
-      statusDiv.className = 'hidden';
-      nameInput.className = '';
-      genderSelect.className = '';
-      searchGenderSelect.className = '';
-      lockUserSelect.className = '';
-      soundButton.className = '';
-      testSoundButton.className = '';
-      permissionMessage.style.display = 'none';
-    }
-
-    // Request location
-    function requestLocation(useWatch = true) {
-      statusDiv.textContent = 'Getting your location...';
-      statusDiv.className = '';
-      permissionMessage.style.display = 'none';
-      clearTimeout(locationTimeout);
-
-      // Timeout to show error if location takes too long
-      locationTimeout = setTimeout(() => {
+    // Authenticate anonymously
+    function tryAuthenticate() {
+      if (!auth) {
         statusDiv.className = 'hidden';
-        permissionMessage.style.display = 'block';
-        errorMessage.textContent = 'Location request taking too long. Please enable location or skip to use a default location.';
-        console.warn('Location request timed out after 5 seconds');
-      }, 5000);
-
-      if (!navigator.geolocation) {
-        clearTimeout(locationTimeout);
-        statusDiv.className = 'hidden';
-        permissionMessage.style.display = 'block';
-        errorMessage.textContent = 'Geolocation not supported by your browser. Please skip to use a default location.';
-        console.error('Geolocation not supported');
+        authErrorDiv.className = '';
+        authErrorMessage.textContent = 'Firebase not initialized. Check configuration.';
         return;
       }
-
-      const locationHandler = (position) => {
-        clearTimeout(locationTimeout);
-        userPosition = [position.coords.latitude, position.coords.longitude];
-        showUI();
-        updateUserLocation();
-        if (beaconOn && !lastBeaconOn) {
-          map.setView(userPosition, 15);
-        }
-        lastBeaconOn = beaconOn;
-        console.log('Location acquired:', userPosition);
-      };
-
-      const errorHandler = (error) => {
-        clearTimeout(locationTimeout);
-        statusDiv.className = 'hidden';
-        permissionMessage.style.display = 'block';
-        console.error('Location error:', error.message, 'Code:', error.code);
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMessage.textContent = 'Location access denied. Please enable location in your browser settings or skip.';
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMessage.textContent = 'Location unavailable. Ensure GPS is enabled or skip to use a default location.';
-            break;
-          case error.TIMEOUT:
-            errorMessage.textContent = 'Location request timed out. Please retry or skip.';
-            break;
-          default:
-            errorMessage.textContent = 'An error occurred while getting your location. Please retry or skip.';
-        }
-        // Fallback to getCurrentPosition if watchPosition fails
-        if (useWatch) {
-          console.log('Falling back to getCurrentPosition');
-          navigator.geolocation.getCurrentPosition(locationHandler, errorHandler, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-          });
-        }
-      };
-
-      try {
-        if (useWatch) {
-          navigator.geolocation.watchPosition(locationHandler, errorHandler, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-          });
-        } else {
-          navigator.geolocation.getCurrentPosition(locationHandler, errorHandler, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-          });
-        }
-      } catch (e) {
-        clearTimeout(locationTimeout);
-        statusDiv.className = 'hidden';
-        permissionMessage.style.display = 'block';
-        errorMessage.textContent = 'Geolocation error. Please skip to use a default location.';
-        console.error('Geolocation error:', e);
-      }
+      statusDiv.textContent = 'Authenticating...';
+      authErrorDiv.className = 'hidden';
+      signInAnonymously(auth)
+        .then(userCredential => {
+          userId = userCredential.user.uid;
+          statusDiv.textContent = 'Authenticated. Initializing map...';
+          if (initMap()) {
+            statusDiv.textContent = 'Authenticated. Enter your name...';
+            nameInput.className = '';
+            setNameButton.className = '';
+          }
+        })
+        .catch(error => {
+          console.error('Auth error:', error.code, error.message);
+          statusDiv.className = 'hidden';
+          authErrorDiv.className = '';
+          let message = `Authentication failed: ${error.message} (${error.code})`;
+          if (error.code === 'auth/operation-not-allowed') {
+            message += ' - Enable Anonymous Authentication in Firebase Console.';
+          } else if (error.code === 'auth/network-request-failed') {
+            message += ' - Check your internet connection.';
+            setTimeout(tryAuthenticate, 5000); // Retry after 5s
+          } else if (error.code === 'auth/invalid-api-key' || error.code === 'auth/app-not-authorized') {
+            message += ' - Verify your Firebase configuration.';
+          }
+          authErrorMessage.textContent = message;
+          alert(`Authentication error: ${error.code}. See error message for details.`);
+        });
     }
 
-    // Skip location (use default)
-    skipLocationButton.addEventListener('click', () => {
-      clearTimeout(locationTimeout);
-      userPosition = [40.7128, -74.0060]; // Default: New York City
-      console.log('Using default location:', userPosition);
-      showUI();
-      updateUserLocation();
-      map.setView(userPosition, 15);
+    retryAuthButton.addEventListener('click', tryAuthenticate);
+    retryMapButton.addEventListener('click', () => {
+      mapErrorDiv.className = 'hidden';
+      statusDiv.className = '';
+      statusDiv.textContent = 'Initializing map...';
+      if (initMap()) {
+        tryAuthenticate();
+      }
     });
 
-    // Update user location and status
+    tryAuthenticate();
+
+    // Request location
+    function requestLocation() {
+      statusDiv.textContent = 'Getting your location...';
+      permissionMessage.style.display = 'none';
+      searchUsersList.parentElement.className = '';
+      navigator.geolocation.watchPosition(
+        position => {
+          userPosition = [position.coords.latitude, position.coords.longitude];
+          statusDiv.className = 'hidden';
+          beaconButton.className = '';
+          updateUserLocation();
+          if (beaconOn) {
+            map.setView(userPosition, 15);
+            fetchNearbyUsers();
+          }
+        },
+        error => {
+          statusDiv.className = 'hidden';
+          permissionMessage.style.display = 'block';
+          console.error('Location error:', error);
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+
+    // Update user location with geohash
     async function updateUserLocation() {
-      if (userPosition && userGender && userName) {
+      if (userPosition && userId && db) {
+        const hash = geofire.geohashForLocation(userPosition);
+        const name = nameInput.value.trim() || localStorage.getItem('userName') || `User_${userId.substring(0, 5)}`;
         try {
           await setDoc(doc(db, 'users', userId), {
             location: new GeoPoint(userPosition[0], userPosition[1]),
+            geohash: hash,
             beaconOn: beaconOn,
-            gender: userGender,
-            name: userName,
+            name: name,
             timestamp: new Date()
           });
-          if (userMarker) {
-            userMarker.setLatLng(userPosition);
-            userMarker.setPopupContent(`${userName} (${userGender})`);
-            userMarker.setIcon(getMarkerIcon(userGender, true));
-          } else {
-            userMarker = L.marker(userPosition, {
-              icon: getMarkerIcon(userGender, true),
-              className: beaconOn ? 'flashing' : ''
-            }).addTo(map).bindPopup(`${userName} (${userGender})`);
-          }
-          if (beaconOn && !lastBeaconOn) {
-            userMarker.setIcon(getMarkerIcon(userGender, true));
-            map.setView(userPosition, 15);
-          }
+          localStorage.setItem('userName', name);
         } catch (error) {
           console.error('Firestore write error:', error);
         }
+        if (userMarker) {
+          userMarker.setLatLng(userPosition);
+        } else if (map) {
+          userMarker = L.circleMarker(userPosition, {
+            color: 'red',
+            radius: 10,
+            className: beaconOn ? 'flashing' : ''
+          }).addTo(map);
+        }
+        if (beaconOn && map) {
+          userMarker.setStyle({ className: 'flashing' });
+          map.setView(userPosition, 15);
+        } else if (userMarker) {
+          userMarker.setStyle({ className: '' });
+        }
       }
     }
 
-    // Enable beacon after name and gender
-    function checkBeaconEnable() {
-      if (userGender && userName) {
-        beaconButton.disabled = false;
-        beaconButton.className = '';
-      } else {
-        beaconButton.disabled = true;
-      }
-    }
-
-    nameInput.addEventListener('input', () => {
-      userName = nameInput.value.trim();
-      checkBeaconEnable();
+    // Set name
+    setNameButton.addEventListener('click', () => {
       updateUserLocation();
+      nameInput.className = 'hidden';
+      setNameButton.className = 'hidden';
+      requestLocation();
     });
 
-    genderSelect.addEventListener('change', () => {
-      userGender = genderSelect.value;
-      checkBeaconEnable();
-      updateUserLocation();
-    });
-
-    searchGenderSelect.addEventListener('change', () => {
-      searchGender = searchGenderSelect.value;
-      updateVisibleUsers();
-    });
-
-    lockUserSelect.addEventListener('change', () => {
-      lockedUserId = lockUserSelect.value;
-      if (beaconOn && soundOn) {
-        startBeep();
-      } else {
-        stopBeep();
-      }
-    });
-
+    // Toggle beacon
     beaconButton.addEventListener('click', () => {
-      if (!userGender || !userName) {
-        alert('Please enter your name and select your gender first.');
-        return;
-      }
       beaconOn = !beaconOn;
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
       updateUserLocation();
-      if (beaconOn && soundOn) {
+      if (beaconOn) {
         startBeep();
+        fetchNearbyUsers();
+        nearbyUsersList.parentElement.className = '';
+        messageInput.className = '';
+        sendMessageButton.className = '';
       } else {
         stopBeep();
+        nearbyUsersList.innerHTML = '';
+        nearbyUsersList.parentElement.className = 'hidden';
+        messageInput.className = 'hidden';
+        sendMessageButton.className = 'hidden';
       }
     });
 
-    soundButton.addEventListener('click', () => {
-      soundOn = !soundOn;
-      soundButton.textContent = `Sound ${soundOn ? 'ON' : 'OFF'}`;
-      if (soundOn && beaconOn) {
-        startBeep();
-      } else {
-        stopBeep();
+    // Retry location
+    retryButton.addEventListener('click', requestLocation);
+
+    // Fetch nearby users (within 1 km)
+    async function fetchNearbyUsers() {
+      if (!userPosition || !beaconOn || !db) return;
+      const radiusInM = 1000;
+      const bounds = geofire.geohashQueryBounds(userPosition, radiusInM);
+      const promises = [];
+      for (const b of bounds) {
+        const q = query(
+          collection(db, 'users'),
+          orderBy('geohash'),
+          startAt(b[0]),
+          endAt(b[1])
+        );
+        promises.push(getDocs(q));
+      }
+      try {
+        const snapshots = await Promise.all(promises);
+        nearbyUsersList.innerHTML = '';
+        const nearbyUsers = [];
+        for (const snap of snapshots) {
+          for (const doc of snap.docs) {
+            const data = doc.data();
+            if (data.beaconOn && data.location) {
+              const distance = geofire.distanceBetween([data.location.latitude, data.location.longitude], userPosition) * 1000;
+              if (distance <= radiusInM) {
+                nearbyUsers.push({ id: doc.id, name: data.name, distance });
+              }
+            }
+          }
+        }
+        nearbyUsers.forEach(user => {
+          const li = document.createElement('li');
+          li.textContent = `${user.name} (${Math.round(user.distance)}m)`;
+          const msgButton = document.createElement('button');
+          msgButton.textContent = 'Message';
+          msgButton.onclick = () => {
+            selectedRecipientId = user.id;
+            messageList.innerHTML = `<h3>Messages with ${user.name}</h3>`;
+            listenForMessages();
+          };
+          li.appendChild(msgButton);
+          nearbyUsersList.appendChild(li);
+        });
+      } catch (error) {
+        console.error('Fetch nearby users error:', error);
+      }
+    }
+
+    // Search users by name
+    searchButton.addEventListener('click', async () => {
+      const searchTerm = searchInput.value.trim();
+      if (!searchTerm || !db) return;
+      const q = query(
+        collection(db, 'users'),
+        orderBy('name'),
+        startAt(searchTerm),
+        endAt(searchTerm + '\uf8ff')
+      );
+      try {
+        const snapshot = await getDocs(q);
+        searchUsersList.innerHTML = '';
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (data.beaconOn) {
+            const li = document.createElement('li');
+            li.textContent = data.name;
+            const msgButton = document.createElement('button');
+            msgButton.textContent = 'Message';
+            msgButton.onclick = () => {
+              selectedRecipientId = doc.id;
+              messageList.innerHTML = `<h3>Messages with ${data.name}</h3>`;
+              listenForMessages();
+            };
+            li.appendChild(msgButton);
+            searchUsersList.appendChild(li);
+          }
+        });
+      } catch (error) {
+        console.error('Search users error:', error);
       }
     });
 
-    testSoundButton.addEventListener('click', () => {
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        console.log('AudioContext initialized for test');
-      }
-      if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => console.log('AudioContext resumed'));
-      }
-      const testOscillator = audioContext.createOscillator();
-      testOscillator.type = 'sine';
-      testOscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-      testOscillator.connect(audioContext.destination);
-      testOscillator.start();
-      testOscillator.stop(audioContext.currentTime + 0.5);
-      console.log('Test sound played');
-    });
-
-    retryButton.addEventListener('click', () => requestLocation(true));
-
-    function startBeep() {
-      if (!audioContext) {
+    // Send message
+    sendMessageButton.addEventListener('click', async () => {
+      if (selectedRecipientId && messageInput.value.trim() && db) {
+        const message = {
+          senderId: userId,
+          recipientId: selectedRecipientId,
+          content: messageInput.value.trim(),
+          timestamp: new Date()
+        };
         try {
-          audioContext = new (window.AudioContext || window.webkitAudioContext)();
-          console.log('AudioContext initialized');
+          await setDoc(doc(collection(db, 'users', selectedRecipientId, 'messages')), message);
+          messageInput.value = '';
         } catch (error) {
-          console.error('AudioContext initialization failed:', error);
-          return;
+          console.error('Send message error:', error);
         }
       }
-      if (audioContext.state === 'suspended') {
-        audioContext.resume().then(() => console.log('AudioContext resumed')).catch(error => console.error('AudioContext resume failed:', error));
+    });
+
+    // Listen for messages
+    function listenForMessages() {
+      if (!selectedRecipientId || !db) return;
+      try {
+        onSnapshot(collection(db, 'users', userId, 'messages'), snapshot => {
+          messageList.innerHTML = `<h3>Messages with ${selectedRecipientId.substring(0, 5)}</h3>`;
+          snapshot.forEach(doc => {
+            const msg = doc.data();
+            const p = document.createElement('p');
+            p.textContent = `${msg.senderId === userId ? 'You' : 'They'}: ${msg.content}`;
+            messageList.appendChild(p);
+          });
+        }, error => {
+          console.error('Listen messages error:', error);
+        });
+      } catch (error) {
+        console.error('Snapshot setup error:', error);
+      }
+    }
+
+    // Web Audio API for beep sound
+    function startBeep() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
       updateBeep();
     }
@@ -365,57 +408,31 @@
       if (oscillator) {
         oscillator.stop();
         oscillator = null;
-        console.log('Beep stopped');
       }
     }
 
     function updateBeep() {
-      if (!beaconOn || !soundOn || !audioContext || audioContext.state !== 'running') {
-        stopBeep();
-        distanceDiv.textContent = 'Distance to closest user: N/A';
-        distanceDiv.className = 'hidden';
-        console.log('Beep not started: beaconOn=', beaconOn, 'soundOn=', soundOn, 'audioContext.state=', audioContext?.state);
-        return;
-      }
-
+      if (!beaconOn || !audioContext) return;
       let minDistance = Infinity;
-      let closestUser = null;
-      let targetUserId = lockedUserId || null;
       Object.values(otherUsers).forEach(user => {
-        if (user.beaconOn && user.location && (!targetUserId || user.id === targetUserId)) {
-          if (searchGender === 'all' || user.gender === searchGender) {
-            const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
-            if (distance < minDistance) {
-              minDistance = distance;
-              closestUser = user;
-            }
-          }
+        if (user.beaconOn && user.location) {
+          const distance = map.distance(userPosition, [user.location.latitude, user.location.longitude]);
+          if (distance < minDistance) minDistance = distance;
         }
       });
-
-      const maxDistance = 20;
-      const minDistanceThreshold = 5;
-      const minFrequency = 20 / 60; // 20 BPM = 0.33 Hz
-      const maxFrequency = 180 / 60; // 180 BPM = 3 Hz
-      let frequency = minDistance <= maxDistance
-        ? minFrequency + (maxFrequency - minFrequency) * Math.max(0, (maxDistance - Math.max(minDistance, minDistanceThreshold)) / (maxDistance - minDistanceThreshold))
+      const maxDistance = 1000;
+      const minFrequency = 0.5;
+      const maxFrequency = 5;
+      let frequency = minDistance < maxDistance
+        ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
         : 0;
-
       if (frequency > 0) {
-        distanceDiv.textContent = `Distance to ${lockedUserId ? 'locked' : 'closest'} user: ${minDistance.toFixed(2)} meters`;
-        distanceDiv.className = '';
         if (!oscillator) {
-          try {
-            oscillator = audioContext.createOscillator();
-            oscillator.type = 'sine';
-            oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-            oscillator.connect(audioContext.destination);
-            oscillator.start();
-            console.log('Beep started, distance:', minDistance.toFixed(2), 'meters, frequency:', (frequency * 60).toFixed(2), 'BPM');
-          } catch (error) {
-            console.error('Oscillator creation failed:', error);
-            return;
-          }
+          oscillator = audioContext.createOscillator();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+          oscillator.connect(audioContext.destination);
+          oscillator.start();
         }
         oscillator.stop(audioContext.currentTime + 0.1);
         oscillator = audioContext.createOscillator();
@@ -426,109 +443,46 @@
         setTimeout(updateBeep, 1000 / frequency);
       } else {
         stopBeep();
-        distanceDiv.textContent = 'Distance to closest user: N/A';
-        distanceDiv.className = 'hidden';
-        console.log('No users within', maxDistance, 'meters or matching search criteria');
       }
     }
 
-    function updateVisibleUsers() {
-      const now = new Date().getTime();
-      const staleThreshold = 30 * 1000; // 30 seconds
-      Object.keys(otherUsers).forEach(id => {
-        const user = otherUsers[id];
-        const userTimestamp = user.timestamp ? user.timestamp.toDate().getTime() : 0;
-        if (!user.beaconOn || (now - userTimestamp) > staleThreshold) {
-          if (user.marker._map) {
-            map.removeLayer(user.marker);
-          }
-          delete otherUsers[id];
-        } else if (user.beaconOn && user.location) {
-          const shouldShow = searchGender === 'all' || user.gender === searchGender;
-          if (shouldShow && !user.marker._map) {
-            user.marker.addTo(map);
-          } else if (!shouldShow && user.marker._map) {
-            map.removeLayer(user.marker);
-          }
-        }
-      });
-      lockUserSelect.innerHTML = '<option value="">No Lock</option>';
-      Object.keys(otherUsers).forEach(id => {
-        const user = otherUsers[id];
-        if (user.beaconOn && (searchGender === 'all' || user.gender === searchGender)) {
-          const option = document.createElement('option');
-          option.value = id;
-          option.textContent = `${user.name || 'User'} (${user.gender})`;
-          lockUserSelect.appendChild(option);
-        }
-      });
-      if (beaconOn && soundOn) {
-        startBeep();
-      }
-    }
-
-    function initializeUserListener() {
-      Object.keys(otherUsers).forEach(id => {
-        if (otherUsers[id].marker._map) {
-          map.removeLayer(otherUsers[id].marker);
-        }
-      });
-      otherUsers = {};
-
-      onSnapshot(collection(db, 'users'), snapshot => {
-        const now = new Date().getTime();
-        const staleThreshold = 30 * 1000; // 30 seconds
-        snapshot.forEach(doc => {
-          const data = doc.data();
-          const id = doc.id;
-          if (id === userId) return;
-
-          const timestamp = data.timestamp ? data.timestamp.toDate().getTime() : 0;
-          if (data.beaconOn && (now - timestamp) <= staleThreshold) {
-            const latlng = [data.location.latitude, data.location.longitude];
-            const gender = data.gender || 'unknown';
-            const name = data.name || 'User';
-            if (otherUsers[id]) {
-              otherUsers[id].marker.setLatLng(latlng);
-              otherUsers[id].marker.setPopupContent(`${name} (${gender})`);
-              otherUsers[id].marker.setIcon(getMarkerIcon(gender));
-              otherUsers[id].location = data.location;
-              otherUsers[id].beaconOn = data.beaconOn;
-              otherUsers[id].gender = gender;
-              otherUsers[id].name = name;
-              otherUsers[id].timestamp = data.timestamp;
-              otherUsers[id].id = id;
-            } else {
-              otherUsers[id] = {
-                marker: L.marker(latlng, {
-                  icon: getMarkerIcon(gender)
-                }).bindPopup(`${name} (${gender})`),
-                location: data.location,
-                beaconOn: data.beaconOn,
-                gender: gender,
-                name: name,
-                timestamp: data.timestamp,
-                id: id
-              };
-              if (searchGender === 'all' || gender === searchGender) {
-                otherUsers[id].marker.addTo(map);
+    // Listen for other users' locations
+    if (db) {
+      try {
+        onSnapshot(collection(db, 'users'), snapshot => {
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            const id = doc.id;
+            if (id === userId) return;
+            if (data.beaconOn && data.location) {
+              const latlng = [data.location.latitude, data.location.longitude];
+              if (otherUsers[id]) {
+                otherUsers[id].marker.setLatLng(latlng);
+                otherUsers[id].location = data.location;
+                otherUsers[id].beaconOn = data.beaconOn;
+              } else if (map) {
+                otherUsers[id] = {
+                  marker: L.circleMarker(latlng, { color: 'blue', radius: 8 }).addTo(map),
+                  location: data.location,
+                  beaconOn: data.beaconOn
+                };
               }
-            }
-          } else if (otherUsers[id]) {
-            if (otherUsers[id].marker._map) {
+            } else if (otherUsers[id]) {
               map.removeLayer(otherUsers[id].marker);
+              delete otherUsers[id];
             }
-            delete otherUsers[id];
+          });
+          if (beaconOn) {
+            updateBeep();
+            fetchNearbyUsers();
           }
+        }, error => {
+          console.error('Users snapshot error:', error);
         });
-        updateVisibleUsers();
-        if (beaconOn && soundOn) updateBeep();
-      }, error => console.error('Firestore snapshot error:', error));
+      } catch (error) {
+        console.error('Snapshot setup error:', error);
+      }
     }
-
-    // Initialize
-    initializeUserListener();
-    requestLocation();
   </script>
 </body>
 </html>
