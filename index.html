@@ -17,7 +17,7 @@
     @keyframes flash {
       50% { opacity: 0; }
     }
-    #gender-select, #search-gender-select, #lock-user-select { display: block; margin: 10px auto; padding: 5px; }
+    #gender-select, #search-gender-select, #lock-user-select, #name-input { display: block; margin: 10px auto; padding: 5px; }
     .marker-male { background: blue; border-radius: 50%; width: 12px; height: 12px; }
     .marker-female { background: pink; width: 12px; height: 12px; }
     .marker-nonbinary { background: green; clip-path: polygon(50% 0%, 100% 100%, 0% 100%); width: 12px; height: 12px; }
@@ -32,6 +32,7 @@
     <p>Please allow location access in your browser settings.</p>
     <button id="retry-button">Retry Location</button>
   </div>
+  <input id="name-input" type="text" placeholder="Enter your name" class="hidden" maxlength="20">
   <select id="gender-select" class="hidden">
     <option value="" disabled selected>Select your gender</option>
     <option value="male">Male</option>
@@ -93,8 +94,10 @@
     let oscillator = null;
     let userId = Math.random().toString(36).substring(2); // Random ID for demo
     let userGender = ''; // No default gender
+    let userName = ''; // No default name
     let searchGender = 'all'; // Default search all genders
     let lockedUserId = ''; // No locked user by default
+    let lastBeaconOn = false; // Track beacon state for zoom control
 
     // DOM elements
     const statusDiv = document.getElementById('status');
@@ -104,6 +107,7 @@
     const soundButton = document.getElementById('sound-button');
     const testSoundButton = document.getElementById('test-sound-button');
     const genderSelect = document.getElementById('gender-select');
+    const nameInput = document.getElementById('name-input');
     const searchGenderSelect = document.getElementById('search-gender-select');
     const lockUserSelect = document.getElementById('lock-user-select');
     const distanceDiv = document.getElementById('distance');
@@ -127,15 +131,18 @@
         position => {
           userPosition = [position.coords.latitude, position.coords.longitude];
           statusDiv.className = 'hidden';
+          nameInput.className = '';
           genderSelect.className = '';
           searchGenderSelect.className = '';
           lockUserSelect.className = '';
           soundButton.className = '';
           testSoundButton.className = '';
           updateUserLocation();
-          if (beaconOn) {
+          // Only zoom when beacon is first turned ON
+          if (beaconOn && !lastBeaconOn) {
             map.setView(userPosition, 15);
           }
+          lastBeaconOn = beaconOn;
         },
         error => {
           statusDiv.className = 'hidden';
@@ -148,40 +155,53 @@
 
     // Update user location and status in Firebase and on map
     async function updateUserLocation() {
-      if (userPosition && userGender) {
+      if (userPosition && userGender && userName) {
         // Update Firebase
         await setDoc(doc(db, 'users', userId), {
           location: new GeoPoint(userPosition[0], userPosition[1]),
           beaconOn: beaconOn,
           gender: userGender,
+          name: userName,
           timestamp: new Date()
         }).catch(error => console.error('Firestore write error:', error));
 
         // Update or create user marker
         if (userMarker) {
           userMarker.setLatLng(userPosition);
-          userMarker.setPopupContent(`You (${userGender})`);
+          userMarker.setPopupContent(`${userName} (${userGender})`);
           userMarker.setIcon(getMarkerIcon(userGender, true));
         } else {
           userMarker = L.marker(userPosition, {
             icon: getMarkerIcon(userGender, true),
             className: beaconOn ? 'flashing' : ''
-          }).addTo(map).bindPopup(`You (${userGender})`);
+          }).addTo(map).bindPopup(`${userName} (${userGender})`);
         }
-        if (beaconOn) {
+        if (beaconOn && !lastBeaconOn) {
           userMarker.setIcon(getMarkerIcon(userGender, true));
           map.setView(userPosition, 15);
         }
       }
     }
 
-    // Enable beacon button only after gender selection
-    genderSelect.addEventListener('change', () => {
-      userGender = genderSelect.value;
-      if (userGender) {
+    // Enable beacon button only after name and gender selection
+    function checkBeaconEnable() {
+      if (userGender && userName) {
         beaconButton.disabled = false;
         beaconButton.className = '';
+      } else {
+        beaconButton.disabled = true;
       }
+    }
+
+    nameInput.addEventListener('input', () => {
+      userName = nameInput.value.trim();
+      checkBeaconEnable();
+      updateUserLocation();
+    });
+
+    genderSelect.addEventListener('change', () => {
+      userGender = genderSelect.value;
+      checkBeaconEnable();
       updateUserLocation();
     });
 
@@ -203,8 +223,8 @@
 
     // Toggle beacon
     beaconButton.addEventListener('click', () => {
-      if (!userGender) {
-        alert('Please select your gender first.');
+      if (!userGender || !userName) {
+        alert('Please enter your name and select your gender first.');
         return;
       }
       beaconOn = !beaconOn;
@@ -360,7 +380,7 @@
         if (user.beaconOn && (searchGender === 'all' || user.gender === searchGender)) {
           const option = document.createElement('option');
           option.value = id;
-          option.textContent = `User (${user.gender})`;
+          option.textContent = `${user.name || 'User'} (${user.gender})`;
           lockUserSelect.appendChild(option);
         }
       });
@@ -379,22 +399,25 @@
         if (data.beaconOn && data.location) {
           const latlng = [data.location.latitude, data.location.longitude];
           const gender = data.gender || 'unknown';
+          const name = data.name || 'User';
           if (otherUsers[id]) {
             otherUsers[id].marker.setLatLng(latlng);
-            otherUsers[id].marker.setPopupContent(`User (${gender})`);
+            otherUsers[id].marker.setPopupContent(`${name} (${gender})`);
             otherUsers[id].marker.setIcon(getMarkerIcon(gender));
             otherUsers[id].location = data.location;
             otherUsers[id].beaconOn = data.beaconOn;
             otherUsers[id].gender = gender;
+            otherUsers[id].name = name;
             otherUsers[id].id = id;
           } else {
             otherUsers[id] = {
               marker: L.marker(latlng, {
                 icon: getMarkerIcon(gender)
-              }).bindPopup(`User (${gender})`),
+              }).bindPopup(`${name} (${gender})`),
               location: data.location,
               beaconOn: data.beaconOn,
               gender: gender,
+              name: name,
               id: id
             };
             if (searchGender === 'all' || gender === searchGender) {
