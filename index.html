@@ -234,13 +234,15 @@
           this.authError = false;
           this.initializeApp();
         },
-        retryMap() {
-          this.mapError = false;
-          if (this.map) {
-            this.map.remove();
-          }
-          this.initMap();
-        },
+       retryMap() {
+  this.mapError = false;
+  if (this.map) {
+    this.map.remove();
+  }
+  this.$nextTick(() => {
+    this.initMap();
+  });
+}
         retryLocation() {
           this.locationError = false;
           this.locationErrorMessage = 'Unable to retrieve location.';
