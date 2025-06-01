@@ -10,12 +10,13 @@
     #map { height: 500px; width: 100%; }
     #status { text-align: center; margin: 10px; }
     #permission-message { text-align: center; color: red; display: none; }
-    #retry-button, #beacon-button { display: block; margin: 10px auto; padding: 10px; }
+    #retry-button, #beacon-button, #sound-button { display: block; margin: 10px auto; padding: 10px; }
     .hidden { display: none; }
     .flashing { animation: flash 1s infinite; }
     @keyframes flash {
       50% { opacity: 0; }
     }
+    #gender-select { display: block; margin: 10px auto; padding: 5px; }
   </style>
 </head>
 <body>
@@ -26,7 +27,13 @@
     <p>Please allow location access in your browser settings.</p>
     <button id="retry-button">Retry Location</button>
   </div>
+  <select id="gender-select" class="hidden">
+    <option value="male">Male</option>
+    <option value="female">Female</option>
+    <option value="non-binary">Non-binary</option>
+  </select>
   <button id="beacon-button" class="hidden">Beacon OFF</button>
+  <button id="sound-button" class="hidden">Sound OFF</button>
   <div id="map"></div>
 
   <!-- Firebase Modular SDK -->
@@ -34,7 +41,7 @@
     // Import Firebase modules
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
     import { getFirestore, collection, doc, setDoc, onSnapshot, GeoPoint } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
-    
+
     // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
@@ -59,20 +66,24 @@
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // User location and marker
+    // User variables
     let userPosition = null;
     let userMarker = null;
     let otherUsers = {};
     let beaconOn = false;
+    let soundOn = false;
     let audioContext = null;
     let oscillator = null;
-    let userId = Math.random().toString(36).substring(2); // Simple random ID for demo
+    let userId = Math.random().toString(36).substring(2); // Random ID for demo
+    let userGender = 'male'; // Default gender
 
     // DOM elements
     const statusDiv = document.getElementById('status');
     const permissionMessage = document.getElementById('permission-message');
     const retryButton = document.getElementById('retry-button');
     const beaconButton = document.getElementById('beacon-button');
+    const soundButton = document.getElementById('sound-button');
+    const genderSelect = document.getElementById('gender-select');
 
     // Request location
     function requestLocation() {
@@ -83,6 +94,8 @@
           userPosition = [position.coords.latitude, position.coords.longitude];
           statusDiv.className = 'hidden';
           beaconButton.className = '';
+          soundButton.className = '';
+          genderSelect.className = '';
           updateUserLocation();
           if (beaconOn) {
             map.setView(userPosition, 15);
@@ -97,25 +110,27 @@
       );
     }
 
-    // Update user location in Firebase and on map
+    // Update user location and status in Firebase and on map
     async function updateUserLocation() {
       if (userPosition) {
         // Update Firebase
         await setDoc(doc(db, 'users', userId), {
           location: new GeoPoint(userPosition[0], userPosition[1]),
           beaconOn: beaconOn,
+          gender: userGender,
           timestamp: new Date()
         });
 
         // Update or create user marker
         if (userMarker) {
           userMarker.setLatLng(userPosition);
+          userMarker.setPopupContent(`You (${userGender})`);
         } else {
           userMarker = L.circleMarker(userPosition, {
             color: 'red',
             radius: 10,
             className: beaconOn ? 'flashing' : ''
-          }).addTo(map);
+          }).addTo(map).bindPopup(`You (${userGender})`);
         }
         if (beaconOn) {
           userMarker.setStyle({ className: 'flashing' });
@@ -131,11 +146,28 @@
       beaconOn = !beaconOn;
       beaconButton.textContent = `Beacon ${beaconOn ? 'ON' : 'OFF'}`;
       updateUserLocation();
-      if (beaconOn) {
+      if (beaconOn && soundOn) {
         startBeep();
       } else {
         stopBeep();
       }
+    });
+
+    // Toggle sound
+    soundButton.addEventListener('click', () => {
+      soundOn = !soundOn;
+      soundButton.textContent = `Sound ${soundOn ? 'ON' : 'OFF'}`;
+      if (soundOn && beaconOn) {
+        startBeep();
+      } else {
+        stopBeep();
+      }
+    });
+
+    // Update gender
+    genderSelect.addEventListener('change', () => {
+      userGender = genderSelect.value;
+      updateUserLocation();
     });
 
     // Retry location
@@ -157,7 +189,10 @@
     }
 
     function updateBeep() {
-      if (!beaconOn || !audioContext) return;
+      if (!beaconOn || !soundOn || !audioContext) {
+        stopBeep();
+        return;
+      }
 
       // Find closest user
       let minDistance = Infinity;
@@ -168,11 +203,11 @@
         }
       });
 
-      // Adjust beep frequency based on distance (closer = faster)
-      const maxDistance = 1000; // Max distance for beep (1km)
-      const minFrequency = 0.5; // Beeps per second (farthest)
-      const maxFrequency = 5; // Beeps per second (closest)
-      let frequency = minDistance < maxDistance
+      // Beep only within 20 meters
+      const maxDistance = 20; // 20 meters
+      const minFrequency = 0.5; // Beeps per second (at 20m)
+      const maxFrequency = 5; // Beeps per second (very close)
+      let frequency = minDistance <= maxDistance
         ? minFrequency + (maxFrequency - minFrequency) * (1 - minDistance / maxDistance)
         : 0;
 
@@ -208,9 +243,14 @@
           const latlng = [data.location.latitude, data.location.longitude];
           if (otherUsers[id]) {
             otherUsers[id].marker.setLatLng(latlng);
+            otherUsers[id].marker.setPopupContent(`User (${data.gender || 'Unknown'})`);
+            otherUsers[id].location = data.location;
+            otherUsers[id].beaconOn = data.beaconOn;
           } else {
             otherUsers[id] = {
-              marker: L.circleMarker(latlng, { color: 'blue', radius: 8 }).addTo(map),
+              marker: L.circleMarker(latlng, { color: 'blue', radius: 8 })
+                .addTo(map)
+                .bindPopup(`User (${data.gender || 'Unknown'})`),
               location: data.location,
               beaconOn: data.beaconOn
             };
@@ -220,7 +260,7 @@
           delete otherUsers[id];
         }
       });
-      if (beaconOn) updateBeep();
+      if (beaconOn && soundOn) updateBeep();
     });
 
     // Initial location request
