@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beacon Map Audio App</title>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    #map { height: 100vh; width: 100vw; }
+    button { position: absolute; top: 10px; left: 10px; z-index: 1000; padding: 10px; }
+  </style>
+</head>
+<body>
+  <button id="toggleBeacon">Toggle Beacon</button>
+  <div id="map"></div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    // === Firebase ===
+    const firebaseConfig = {
+      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
+      authDomain: "risk-ec382.firebaseapp.com",
+      projectId: "risk-ec382",
+      storageBucket: "risk-ec382.appspot.com",
+      messagingSenderId: "177105151944",
+      appId: "1:177105151944:web:758b928eb83ccb894902fd",
+      measurementId: "G-2LKEG2N7ZD"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // === Globals ===
+    const userId = localStorage.getItem("anonUserId") || crypto.randomUUID();
+    localStorage.setItem("anonUserId", userId);
+    let watchId;
+    let beaconActive = false;
+    let currentLat = 0;
+    let currentLon = 0;
+    const markers = {};
+    const lastBeepTimestamps = {};
+
+    // === Map ===
+    const map = L.map('map').setView([0, 0], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    // === Button ===
+    document.getElementById('toggleBeacon').addEventListener('click', toggleBeacon);
+
+    // === Location ===
+    window.addEventListener("load", () => {
+      watchId = navigator.geolocation.watchPosition(async (pos) => {
+        currentLat = pos.coords.latitude;
+        currentLon = pos.coords.longitude;
+        await db.collection("users").doc(userId).set({
+          lat: currentLat,
+          lon: currentLon,
+          beacon: beaconActive,
+          timestamp: Date.now(),
+        });
+      }, console.error, { enableHighAccuracy: true });
+    });
+
+    window.addEventListener("beforeunload", async () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      await db.collection("users").doc(userId).delete();
+    });
+
+    // === Toggle Beacon ===
+    function toggleBeacon() {
+      beaconActive = !beaconActive;
+      db.collection("users").doc(userId).set({
+        lat: currentLat,
+        lon: currentLon,
+        beacon: beaconActive,
+        timestamp: Date.now(),
+      });
+
+      beaconActive ? startLocalBeeping() : stopLocalBeeping();
+    }
+
+    let localBeepInterval;
+    function startLocalBeeping() {
+      localBeepInterval = setInterval(() => playBeep(200, 0.2), 1000);
+    }
+    function stopLocalBeeping() {
+      clearInterval(localBeepInterval);
+    }
+    function playBeep(freq, duration) {
+      const audioCtx = new AudioContext();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + duration);
+    }
+
+    // === Remote Detection ===
+    db.collection("users").onSnapshot(snapshot => {
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        const id = doc.id;
+        if (id === userId) return;
+        if (data.beacon) {
+          updateOrCreateMarker(id, data.lat, data.lon);
+          triggerSpatialBeep(id, data.lat, data.lon);
+        } else {
+          removeMarker(id);
+        }
+      });
+    });
+
+    function updateOrCreateMarker(id, lat, lon) {
+      if (!markers[id]) {
+        markers[id] = L.marker([lat, lon]).addTo(map);
+      } else {
+        markers[id].setLatLng([lat, lon]);
+      }
+    }
+
+    function removeMarker(id) {
+      if (markers[id]) {
+        map.removeLayer(markers[id]);
+        delete markers[id];
+      }
+    }
+
+    function triggerSpatialBeep(id, lat, lon) {
+      const now = Date.now();
+      if (lastBeepTimestamps[id] && now - lastBeepTimestamps[id] < 1000) return;
+      lastBeepTimestamps[id] = now;
+
+      const dx = (lon - currentLon) * 1000;
+      const dy = (lat - currentLat) * 1000;
+
+      const audioCtx = new AudioContext();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const panner = audioCtx.createPanner();
+
+      panner.panningModel = "HRTF";
+      panner.distanceModel = "linear";
+      panner.maxDistance = 1000;
+      panner.setPosition(dx, 0, dy);
+
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      gain.gain.setValueAtTime(1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+
+      osc.connect(gain).connect(panner).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    }
+  </script>
+</body>
+</html>
