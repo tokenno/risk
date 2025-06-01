@@ -89,17 +89,16 @@
     });
 
     // === Toggle Beacon ===
-    let audioCtx;
-  async function toggleBeacon() {
-  if (!audioCtx) audioCtx = new AudioContext();
+   async function toggleBeacon() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-  // Ensure audio context is resumed after user interaction
+  // Resume the audio context inside user gesture
   if (audioCtx.state === 'suspended') {
     try {
       await audioCtx.resume();
       console.log("AudioContext resumed");
     } catch (err) {
-      console.error("AudioContext resume failed", err);
+      console.error("Failed to resume AudioContext", err);
       return;
     }
   }
@@ -115,7 +114,7 @@
       timestamp: Date.now(),
     });
   } catch (err) {
-    console.error("Failed to update beacon status:", err);
+    console.error("Firestore update error:", err);
   }
 
   beaconActive ? startLocalBeeping() : stopLocalBeeping();
