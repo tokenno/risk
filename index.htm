@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geolocation Map App</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    #map { height: 400px; }
+    .error-message { display: none; }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4 max-w-md">
+    <!-- Initializing Message -->
+    <div id="initializing" class="error-message text-center p-4 bg-blue-100 text-blue-700 rounded">
+      Initializing...
+    </div>
+
+    <!-- Auth Error -->
+    <div id="auth-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
+      <p>Auth Error</p>
+      <p>Unable to authenticate.</p>
+      <button id="auth-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
+    </div>
+
+    <!-- Map Error -->
+    <div id="map-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
+      <p>Map Error</p>
+      <p>Failed to load map.</p>
+      <button id="map-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
+    </div>
+
+    <!-- Location Required Error -->
+    <div id="location-error" class="error-message text-center p-4 bg-red-100 text-red-700 rounded">
+      <p>Location Required</p>
+      <p>Allow location access in settings.</p>
+      <button id="location-retry" class="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">Retry</button>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content" class="mt-4">
+      <!-- Map Container -->
+      <div id="map" class="w-full rounded shadow"></div>
+
+      <!-- Beacon and Search Section -->
+      <div class="mt-4">
+        <div class="flex justify-between items-center">
+          <span id="beacon-status" class="text-gray-700">Beacon OFF</span>
+          <div>
+            <button id="set-name" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Set Name</button>
+            <button id="refresh" class="ml-2 px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600">Refresh</button>
+          </div>
+        </div>
+        <div class="mt-2">
+          <input id="search-input" type="text" placeholder="Search" class="w-full p-2 border rounded">
+          <button id="search-btn" class="mt-2 w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">Search</button>
+        </div>
+      </div>
+
+      <!-- Nearby Section -->
+      <div class="mt-4">
+        <h2 class="text-lg font-semibold">Nearby (1 km)</h2>
+        <ul id="nearby-list" class="mt-2 space-y-2">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
+
+      <!-- Send Button -->
+      <button id="send-btn" class="mt-4 w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Send</button>
+    </div>
+  </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Initialize map and geolocation
+    let map;
+    let userPosition = null;
+
+    // Show/hide error messages
+    function showError(id) {
+      document.querySelectorAll('.error-message').forEach(el => el.style.display = 'none');
+      document.getElementById(id).style.display = 'block';
+      document.getElementById('main-content').style.display = 'none';
+    }
+
+    function showMainContent() {
+      document.querySelectorAll('.error-message').forEach(el => el.style.display = 'none');
+      document.getElementById('main-content').style.display = 'block';
+    }
+
+    // Initialize geolocation and map
+    function initializeGeolocation() {
+      showError('initializing');
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            userPosition = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            };
+            initMap();
+            showMainContent();
+            updateNearbyList();
+          },
+          (error) => {
+            if (error.code === error.PERMISSION_DENIED) {
+              showError('location-error');
+            } else {
+              showError('map-error');
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0
+          }
+        );
+      } else {
+        showError('map-error');
+      }
+    }
+
+    // Initialize Leaflet map
+    function initMap() {
+      try {
+        map = L.map('map').setView([userPosition.latitude, userPosition.longitude], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+        L.marker([userPosition.latitude, userPosition.longitude]).addTo(map)
+          .bindPopup('You are here!').openPopup();
+      } catch (e) {
+        showError('map-error');
+      }
+    }
+
+    // Update nearby list (placeholder)
+    function updateNearbyList() {
+      const nearbyList = document.getElementById('nearby-list');
+      nearbyList.innerHTML = '';
+      // Example: Add mock nearby locations within 1 km
+      const mockLocations = [
+        { name: 'Coffee Shop', distance: '0.5 km' },
+        { name: 'Park', distance: '0.8 km' }
+      ];
+      mockLocations.forEach(loc => {
+        const li = document.createElement('li');
+        li.className = 'p-2 bg-white rounded shadow';
+        li.textContent = `${loc.name} (${loc.distance})`;
+        nearbyList.appendChild(li);
+      });
+    }
+
+    // Event listeners for retry buttons
+    document.getElementById('auth-retry').addEventListener('click', initializeGeolocation);
+    document.getElementById('map-retry').addEventListener('click', initializeGeolocation);
+    document.getElementById('location-retry').addEventListener('click', initializeGeolocation);
+
+    // Placeholder for other buttons
+    document.getElementById('set-name').addEventListener('click', () => {
+      alert('Set Name functionality not implemented.');
+    });
+    document.getElementById('refresh').addEventListener('click', () => {
+      initializeGeolocation();
+    });
+    document.getElementById('search-btn').addEventListener('click', () => {
+      const query = document.getElementById('search-input').value;
+      alert(`Search for: ${query} (not implemented)`);
+    });
+    document.getElementById('send-btn').addEventListener('click', () => {
+      alert('Send functionality not implemented.');
+    });
+
+    // Start geolocation on load
+    initializeGeolocation();
+  </script>
+</body>
+</html>
