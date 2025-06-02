@@ -9,6 +9,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     body {
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -123,6 +125,12 @@
       font-weight: bold;
       color: #28a745;
     }
+    #map {
+      height: 200px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      margin-top: 8px;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 8px;
@@ -133,6 +141,9 @@
       }
       .section {
         padding: 8px;
+      }
+      #map {
+        height: 150px;
       }
     }
   </style>
@@ -160,6 +171,7 @@
       <div v-if="userLocation">
         <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
         <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
+        <div id="map"></div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
       <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
@@ -203,7 +215,7 @@
 
   <script>
     // Import Vue
-    const { createApp, ref, onMounted } = Vue;
+    const { createApp, ref, onMounted, watch } = Vue;
 
     // Firebase configuration
     const firebaseConfig = {
@@ -236,6 +248,9 @@
         const messages = ref([]);
         const messageInput = ref('');
         const firebaseInitialized = ref(true);
+        let map = null;
+        let userMarker = null;
+        let nearbyMarkers = [];
 
         // Authentication state
         onMounted(() => {
@@ -251,6 +266,36 @@
           });
         });
 
+        // Initialize map when userLocation is set
+        watch(userLocation, (newLocation) => {
+          if (newLocation && !map) {
+            map = L.map('map').setView(newLocation, 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+              maxZoom: 18
+            }).addTo(map);
+            userMarker = L.marker(newLocation).addTo(map).bindPopup('You are here');
+          }
+          if (map && newLocation) {
+            map.setView(newLocation, 13);
+            if (userMarker) {
+              userMarker.setLatLng(newLocation);
+            }
+          }
+        });
+
+        // Update nearby users on map
+        watch(nearbyUsers, (newUsers) => {
+          if (map) {
+            nearbyMarkers.forEach(marker => map.removeLayer(marker));
+            nearbyMarkers = newUsers.map(user => {
+              return L.marker([user.latitude, user.longitude])
+                .addTo(map)
+                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away)`);
+            });
+          }
+        });
+
         // Sign in with Google
         async function signIn() {
           const provider = new firebase.auth.GoogleAuthProvider();
@@ -263,6 +308,10 @@
 
         // Get user location
         function getUserLocation() {
+          if (!navigator.geolocation) {
+            errorMessage.value = 'Geolocation is not supported by your browser';
+            return;
+          }
           navigator.geolocation.getCurrentPosition(
             (position) => {
               userLocation.value = [position.coords.latitude, position.coords.longitude];
@@ -271,7 +320,13 @@
               if (status.value === 'ONLINE') fetchNearbyUsers();
             },
             (error) => {
-              errorMessage.value = 'Failed to acquire location: ' + error.message;
+              if (error.code === error.PERMISSION_DENIED) {
+                errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
+              } else if (error.message.includes('permissions policy')) {
+                errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
+              } else {
+                errorMessage.value = 'Failed to acquire location: ' + error.message;
+              }
             }
           );
         }
@@ -280,13 +335,13 @@
         async function updateUserLocation() {
           if (currentUserId.value && userLocation.value) {
             try {
-              await db.collection('users').doc(currentUserId.value).update({
+              await db.collection('users').doc(currentUserId.value).set({
                 name: user.value,
                 status: status.value,
                 latitude: userLocation.value[0],
                 longitude: userLocation.value[1],
                 lastSeen: new Date().toISOString()
-              });
+              }, { merge: true });
             } catch (error) {
               errorMessage.value = 'Failed to update location: ' + error.message;
             }
@@ -347,7 +402,14 @@
               .map(doc => {
                 const data = doc.data();
                 const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                return { id: doc.id, name: data.name, distance, lastSeen: data.lastSeen };
+                return { 
+                  id: doc.id, 
+                  name: data.name, 
+                  distance, 
+                  lastSeen: data.lastSeen,
+                  latitude: data.latitude,
+                  longitude: data.longitude
+                };
               })
               .filter(user => user.distance < 10000); // 10km radius
             loadingNearby.value = false;
