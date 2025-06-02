@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nearby Users App</title>
+  <title>FCK DOT</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -51,6 +51,12 @@
     }
     button:hover {
       background: #218838;
+    }
+    button.warning {
+      background: #dc3545;
+    }
+    button.warning:hover {
+      background: #c82333;
     }
     .error {
       color: #ff4d4d;
@@ -165,6 +171,9 @@
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
+      <button class="warning" @click="clearStaleLocations" :disabled="clearingStaleLocations">
+        {{ clearingStaleLocations ? 'Clearing...' : 'Clear Stale Locations' }}
+      </button>
     </div>
 
     <div class="section">
@@ -250,6 +259,7 @@
         const messageInput = ref('');
         const firebaseInitialized = ref(true);
         const soundEnabled = ref(true);
+        const clearingStaleLocations = ref(false);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
@@ -303,6 +313,34 @@
           if (!soundEnabled.value && beepInterval) {
             clearInterval(beepInterval);
             beepInterval = null;
+          }
+        }
+
+        // Clear stale locations (users who haven't updated in 5 minutes)
+        async function clearStaleLocations() {
+          if (clearingStaleLocations.value) return;
+          
+          clearingStaleLocations.value = true;
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          
+          try {
+            const query = db.collection('users')
+              .where('lastSeen', '<', fiveMinutesAgo);
+            
+            const snapshot = await query.get();
+            const batch = db.batch();
+            
+            snapshot.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+            errorMessage.value = `Cleared ${snapshot.size} stale locations`;
+            fetchNearbyUsers(); // Refresh the list
+          } catch (error) {
+            errorMessage.value = 'Failed to clear stale locations: ' + error.message;
+          } finally {
+            clearingStaleLocations.value = false;
           }
         }
 
@@ -578,9 +616,11 @@
           messageInput,
           firebaseInitialized,
           soundEnabled,
+          clearingStaleLocations,
           toggleStatus,
           changeName,
           toggleSound,
+          clearStaleLocations,
           selectUser,
           sendMessage,
           formatRelativeTime,
