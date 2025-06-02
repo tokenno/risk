@@ -3,13 +3,48 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Live User Map with Real-time Tracking</title>
+  <title>Live Risk Map with Real-time Tracking</title>
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" 
         integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" 
         crossorigin=""/>
   <!-- Vue.js Production Build -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <!-- Firebase SDKs -->
+  <script type="module">
+    // Firebase v9 Modular Imports
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue, off, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    // Your web app's Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
+      authDomain: "risk-ec382.firebaseapp.com",
+      projectId: "risk-ec382",
+      storageBucket: "risk-ec382.appspot.com",
+      messagingSenderId: "177105151944",
+      appId: "1:177105151944:web:758b928eb83ccb894902fd",
+      measurementId: "G-2LKEG2N7ZD"
+    };
+
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    // Make available to Vue app
+    window.firebase = {
+      db,
+      ref,
+      set,
+      onValue,
+      off,
+      push,
+      auth,
+      signInAnonymously
+    };
+  </script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -111,13 +146,6 @@
     .offline {
       background: #dc3545;
     }
-    .debug-panel {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      margin-top: 20px;
-      font-family: monospace;
-    }
   </style>
 </head>
 <body>
@@ -175,18 +203,6 @@
           <button @click="sendMessage">Send</button>
         </div>
       </div>
-
-      <!-- Debug Panel (set v-if="true" temporarily) -->
-      <div class="debug-panel" v-if="false">
-        <h3>Debug Info</h3>
-        <p>Firebase Ready: {{ !!firebase }}</p>
-        <p>User ID: {{ currentUserId || 'Not set' }}</p>
-        <p>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</p>
-        <p>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</p>
-        <p>Firebase Users: {{ Object.keys(firebaseUsers || {}).length }}</p>
-        <button @click="forceRefresh">Force Refresh</button>
-        <button @click="logDatabaseStructure">Show DB Structure</button>
-      </div>
     </div>
   </div>
 
@@ -195,43 +211,6 @@
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin=""></script>
   
-  <!-- Firebase SDK -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, off, push, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-    // Your Firebase Config
-    const firebaseConfig = {
-      apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
-      authDomain: "risk-ec382.firebaseapp.com",
-      databaseURL: "https://risk-ec382-default-rtdb.firebaseio.com",
-      projectId: "risk-ec382",
-      storageBucket: "risk-ec382.appspot.com",
-      messagingSenderId: "177105151944",
-      appId: "1:177105151944:web:758b928eb83ccb894902fd",
-      measurementId: "G-2LKEG2N7ZD"
-    };
-
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    const auth = getAuth(app);
-
-    // Make available globally for Vue
-    window.firebase = {
-      db,
-      ref,
-      set,
-      onValue,
-      off,
-      push,
-      get,
-      auth,
-      signInAnonymously
-    };
-  </script>
-
   <script>
     const { createApp } = Vue;
 
@@ -239,7 +218,7 @@
       data() {
         return {
           status: 'OFFLINE',
-          user: 'Anonymous',
+          user: localStorage.getItem('username') || 'Anonymous',
           userLocation: null,
           map: null,
           userMarker: null,
@@ -251,9 +230,8 @@
           currentUserId: null,
           proximityAlert: null,
           userMarkers: {},
+          debounceTimer: null,
           lastLocationUpdate: 0,
-          firebaseUsers: null,
-          usersListener: null,
           messagesListener: null,
           locationWatchId: null
         };
@@ -263,15 +241,23 @@
         this.initMap();
         this.startLocationTracking();
         
-        // For debugging
-        window.app = this;
+        // Add cleanup handler for window unload
+        window.addEventListener('beforeunload', () => {
+          if (this.currentUserId && this.status === 'ONLINE') {
+            firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
+          }
+        });
+
+        // Debug helper (only in localhost)
+        if (window.location.hostname === "localhost") {
+          window.app = this;
+        }
       },
       methods: {
-        async waitForFirebase() {
+        waitForFirebase() {
           return new Promise((resolve) => {
             const check = () => {
               if (window.firebase) {
-                console.log("Firebase initialized");
                 resolve();
               } else {
                 setTimeout(check, 100);
@@ -290,7 +276,7 @@
 
         startLocationTracking() {
           if (!navigator.geolocation) {
-            alert("Geolocation is not supported by your browser");
+            console.error("Geolocation not supported");
             return;
           }
 
@@ -311,18 +297,20 @@
           const { latitude, longitude } = position.coords;
           this.userLocation = [latitude, longitude];
           
-          // Throttle Firebase updates (every 3 seconds)
-          const now = Date.now();
-          if (this.status === 'ONLINE' && now - this.lastLocationUpdate > 3000) {
-            this.updateUserLocation();
-            this.lastLocationUpdate = now;
-          }
-
-          this.updateMapMarker();
+          // Clear any pending update
+          if (this.debounceTimer) clearTimeout(this.debounceTimer);
+          
+          // Schedule update with debounce
+          this.debounceTimer = setTimeout(() => {
+            if (this.status === 'ONLINE') {
+              this.updateUserLocation();
+            }
+            this.updateMapMarker();
+          }, 1000); // 1 second debounce
         },
 
         updateMapMarker() {
-          if (!this.map || !this.userLocation) return;
+          if (!this.map) return;
           
           if (!this.userMarker) {
             this.userMarker = L.marker(this.userLocation, {
@@ -343,70 +331,50 @@
         },
 
         async toggleOnlineStatus() {
-          try {
-            if (this.status === 'OFFLINE') {
+          if (this.status === 'OFFLINE') {
+            try {
               const userCredential = await firebase.signInAnonymously(firebase.auth);
               this.currentUserId = userCredential.user.uid;
-              console.log("Authenticated as:", this.currentUserId);
-              
               this.status = 'ONLINE';
               this.updateUserLocation();
               this.listenForNearbyUsers();
-            } else {
-              // Proper cleanup when going offline
-              await firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
-              if (this.usersListener) {
-                firebase.off(this.usersListener);
-              }
-              this.clearUserMarkers();
-              this.status = 'OFFLINE';
+            } catch (error) {
+              console.error("Login failed:", error);
             }
-          } catch (error) {
-            console.error("Status change failed:", error);
-            alert(`Error: ${error.message}`);
+          } else {
+            const userRef = firebase.ref(firebase.db, `users/${this.currentUserId}`);
+            userRef.onDisconnect().cancel(); // Cancel any pending onDisconnect
+            await firebase.set(userRef, null);
+            firebase.off(firebase.ref(firebase.db, 'users'));
+            this.status = 'OFFLINE';
+            this.clearUserMarkers();
           }
         },
 
         async updateUserLocation() {
-          if (!this.userLocation || !this.currentUserId) {
-            console.warn("Can't update location - missing data");
-            return;
-          }
+          if (!this.userLocation || !this.currentUserId) return;
           
-          try {
-            await firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), {
-              lat: this.userLocation[0],
-              lng: this.userLocation[1],
-              name: this.user,
-              lastOnline: Date.now()
-            });
-            console.log("Location updated to Firebase");
-          } catch (error) {
-            console.error("Failed to update location:", error);
-          }
+          const userRef = firebase.ref(firebase.db, `users/${this.currentUserId}`);
+          await firebase.set(userRef, {
+            lat: this.userLocation[0],
+            lng: this.userLocation[1],
+            name: this.user,
+            lastOnline: Date.now()
+          });
+
+          // Set up automatic cleanup if connection drops
+          userRef.onDisconnect().remove();
         },
 
         listenForNearbyUsers() {
-          // Clear previous listener if exists
-          if (this.usersListener) {
-            firebase.off(this.usersListener);
-          }
-
           const usersRef = firebase.ref(firebase.db, 'users');
           
-          this.usersListener = firebase.onValue(usersRef, (snapshot) => {
+          firebase.onValue(usersRef, (snapshot) => {
             const allUsers = snapshot.val() || {};
-            this.firebaseUsers = allUsers; // For debugging
-            console.log("Users updated:", Object.keys(allUsers).length);
-            
-            if (!this.userLocation) {
-              console.warn("Can't calculate distances - no user location");
-              return;
-            }
-
             this.processNearbyUsers(allUsers);
           }, (error) => {
-            console.error("Listener error:", error);
+            console.error("Firebase read failed:", error);
+            this.loadingNearby = false;
           });
         },
 
@@ -414,7 +382,10 @@
           this.clearUserMarkers();
           
           this.nearbyUsers = Object.entries(allUsers)
-            .filter(([id]) => id !== this.currentUserId)
+            .filter(([id, user]) => {
+              return id !== this.currentUserId && 
+                     Date.now() - user.lastOnline < 300000; // 5 minutes
+            })
             .map(([id, user]) => {
               const distance = this.calculateDistance(
                 this.userLocation,
@@ -458,7 +429,6 @@
         clearUserMarkers() {
           Object.values(this.userMarkers).forEach(marker => marker.remove());
           this.userMarkers = {};
-          this.nearbyUsers = [];
         },
 
         calculateDistance(pos1, pos2) {
@@ -506,6 +476,7 @@
           const newName = prompt('Enter your name:', this.user);
           if (newName !== null) {
             this.user = newName || 'Anonymous';
+            localStorage.setItem('username', this.user);
             if (this.userMarker) {
               this.userMarker.setPopupContent(`<b>${this.user}</b><br>You are here`);
             }
@@ -575,27 +546,6 @@
               message += "Unknown error.";
           }
           alert(message);
-        },
-
-        // Debugging methods
-        async forceRefresh() {
-          console.log("--- FORCE REFRESH ---");
-          console.log("Current User ID:", this.currentUserId);
-          console.log("User Location:", this.userLocation);
-          
-          try {
-            const snapshot = await firebase.get(firebase.ref(firebase.db, 'users'));
-            console.log("Firebase Users Data:", snapshot.val());
-            this.listenForNearbyUsers();
-          } catch (error) {
-            console.error("Force refresh failed:", error);
-          }
-        },
-
-        logDatabaseStructure() {
-          firebase.get(firebase.ref(firebase.db, '/')).then((snapshot) => {
-            console.log("Full DB Structure:", snapshot.val());
-          });
         }
       },
       beforeUnmount() {
@@ -603,14 +553,13 @@
         if (this.locationWatchId) {
           navigator.geolocation.clearWatch(this.locationWatchId);
         }
-        if (this.usersListener) {
-          firebase.off(this.usersListener);
-        }
         if (this.messagesListener) {
           firebase.off(this.messagesListener);
         }
         if (this.status === 'ONLINE') {
-          firebase.set(firebase.ref(firebase.db, `users/${this.currentUserId}`), null);
+          const userRef = firebase.ref(firebase.db, `users/${this.currentUserId}`);
+          userRef.onDisconnect().cancel();
+          firebase.set(userRef, null);
         }
       }
     }).mount('#app');
