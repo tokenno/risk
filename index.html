@@ -242,10 +242,31 @@
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
 
-        // Initialize audio context
+       // Initialize audio context
         function initAudio() {
           if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            try {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              // Resume audio context on any user interaction
+              document.addEventListener('click', resumeAudioContext, { once: true });
+            } catch (error) {
+              console.error('AudioContext error:', error);
+              errorMessage.value = 'Audio initialization failed. Try refreshing the page.';
+            }
+          }
+        }
+
+        // Resume audio context (required for mobile and some browsers)
+        function resumeAudioContext() {
+          if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+              console.log('AudioContext resumed successfully');
+              if (soundEnabled.value) {
+                updateUserBeeps();
+              }
+            }).catch(error => {
+              console.error('Failed to resume AudioContext:', error);
+            });
           }
         }
 
@@ -267,36 +288,40 @@
 
         // Play beep with custom frequency and distance-based effects
         function playBeep(profile, distance) {
-          if (!audioContext || !soundEnabled.value) return;
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
           
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          const panner = audioContext.createStereoPanner();
-          
-          oscillator.type = profile.waveType;
-          oscillator.frequency.value = profile.frequency;
-          
-          // Distance-based volume (quieter when farther)
-          const baseVolume = 0.15;
-          const distanceVolume = Math.max(0, baseVolume * (1 - Math.min(1, distance / 10)));
-          
-          // ADSR envelope
-          const now = audioContext.currentTime;
-          gainNode.gain.setValueAtTime(0, now);
-          gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.02); // Attack
-          gainNode.gain.linearRampToValueAtTime(distanceVolume * 0.7, now + 0.05); // Decay
-          gainNode.gain.setValueAtTime(distanceVolume * 0.7, now + 0.08); // Sustain
-          gainNode.gain.linearRampToValueAtTime(0, now + 0.1); // Release
-          
-          // Panning based on user profile
-          panner.pan.value = profile.pan;
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(panner);
-          panner.connect(audioContext.destination);
-          
-          oscillator.start();
-          oscillator.stop(now + 0.1);
+          try {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const panner = audioContext.createStereoPanner();
+            
+            oscillator.type = profile.waveType;
+            oscillator.frequency.value = profile.frequency;
+            
+            // Distance-based volume (quieter when farther)
+            const baseVolume = 0.15;
+            const distanceVolume = Math.max(0.01, baseVolume * (1 - Math.min(1, distance / 10)));
+            
+            // ADSR envelope
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.02); // Attack
+            gainNode.gain.linearRampToValueAtTime(distanceVolume * 0.7, now + 0.05); // Decay
+            gainNode.gain.setValueAtTime(distanceVolume * 0.7, now + 0.08); // Sustain
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.1); // Release
+            
+            // Panning based on user profile
+            panner.pan.value = profile.pan;
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(panner);
+            panner.connect(audioContext.destination);
+            
+            oscillator.start();
+            oscillator.stop(now + 0.1);
+          } catch (error) {
+            console.error('Audio playback error:', error);
+          }
         }
 
         // Update beeps for all users within 5m
@@ -307,6 +332,9 @@
             userBeepIntervals.delete(userId);
           });
           activeSoundProfiles.value = [];
+
+          // Don't proceed if audio isn't enabled or context isn't running
+          if (!soundEnabled.value || (audioContext && audioContext.state !== 'running')) return;
 
           // Create new intervals for users within 5m (excluding selected user)
           nearbyUsers.value.forEach(user => {
@@ -334,7 +362,14 @@
             userBeepIntervals.clear();
             activeSoundProfiles.value = [];
           } else {
-            updateUserBeeps();
+            // Resume audio context if needed
+            if (audioContext && audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                updateUserBeeps();
+              });
+            } else {
+              updateUserBeeps();
+            }
           }
         }
 
