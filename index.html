@@ -394,30 +394,31 @@
         });
 
         watch(nearbyUsers, (newUsers) => {
-          if (map) {
-            nearbyMarkers.forEach(marker => map.removeLayer(marker));
-            nearbyMarkers = newUsers.map((user, index) => {
-              const color = colors[index % colors.length];
-              return L.marker([user.latitude, user.longitude], {
-                icon: L.divIcon({
-                  html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-                  className: 'user-marker',
-                  iconSize: [20, 20]
-                })
-              }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-            });
-          }
-          
-          closestDistance = Infinity;
-          newUsers.forEach(user => {
-            if (user.distance < 20 && user.distance < closestDistance) {
-              closestDistance = user.distance;
-            }
-          });
-          
-          updateBeepInterval();
+      if (map) {
+        nearbyMarkers.forEach(marker => map.removeLayer(marker));
+        nearbyMarkers = newUsers.map((user, index) => {
+          const color = colors[index % colors.length];
+          return L.marker([user.latitude, user.longitude], {
+            icon: L.divIcon({
+              html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
         });
-
+      }
+      
+      // Find closest user within 20m for beep sound (EXCLUDING SELECTED USER)
+      closestDistance = Infinity;
+      newUsers.forEach(user => {
+        if (user.id !== selectedUser.value?.id && user.distance < 20 && user.distance < closestDistance) {
+          closestDistance = user.distance;
+        }
+      });
+      
+      updateBeepInterval();
+    });
+            
         async function signIn() {
           const provider = new firebase.auth.GoogleAuthProvider();
           try {
