@@ -107,6 +107,15 @@
       border-color: #28a745;
       box-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
     }
+    select {
+      padding: 6px;
+      border: 1px solid #555;
+      border-radius: 4px;
+      background: #2a2a2a;
+      color: #e0e0e0;
+      font-size: 0.85em;
+      margin-bottom: 8px;
+    }
     .debug {
       font-size: 0.8em;
       color: #aaa;
@@ -136,7 +145,7 @@
       .container {
         padding: 8px;
       }
-      button, input {
+      button, input, select {
         width: 100%;
         margin: 4px 0;
       }
@@ -156,6 +165,7 @@
         <span>{{ currentUser.name.charAt(0).toUpperCase() }}</span>
         <div>
           <div>{{ currentUser.name }}</div>
+          <div v-if="currentUser.gender">Gender: {{ currentUser.gender }}</div>
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
         </div>
@@ -165,6 +175,7 @@
     <div class="section">
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
+      <button @click="setGender">Set Gender</button>
       <button @click="toggleBeep">{{ beepEnabled ? 'Disable Beep' : 'Enable Beep' }}</button>
     </div>
 
@@ -181,11 +192,20 @@
 
     <div class="section">
       <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
+      <select multiple v-model="genderFilter" @change="fetchNearbyUsers">
+        <option value="All">All Genders</option>
+        <option value="Male">Male</option>
+        <option value="Female">Female</option>
+        <option value="Non-binary">Non-binary</option>
+        <option value="Trans">Trans</option>
+        <option value="Gay">Gay</option>
+        <option value="Lesbian">Lesbian</option>
+      </select>
       <div v-if="loadingNearbyUsers">Loading nearby users...</div>
       <div v-else-if="!loadingNearbyUsers && nearbyUsers.length === 0">No users nearby</div>
       <div v-if="userError" class="error">{{ userError.message }}</div>
       <div v-for="user in nearbyUsers" :key="user.id" class="user-list" @click="selectUser(user)">
-        <div>{{ user.name }}</div>
+        <div>{{ user.name }} ({{ user.gender || 'Not set' }})</div>
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
         <div v-else>{{ (user.distance/1000).toFixed(2) }}km away</div>
         <div>{{ formatRelativeTime(user?.lastSeen?.toDate()) }}</div>
@@ -211,6 +231,7 @@
       <div>Location: {{ userLocation.latitude && userLocation.longitude ? 'Valid' : 'Invalid' }}</div>
       <div>Last Update: {{ lastLocationUpdate?.timestamp ? new Date(lastLocationUpdate?.timestamp).toLocaleTimeString() : 'Never' }}</div>
       <div>Beep Alert: {{ beepEnabled ? 'Enabled' : 'Disabled' }}</div>
+      <div>Gender Filter: {{ genderFilter.length ? genderFilter.join(', ') : 'None' }}</div>
       <button @click="forceRefresh">Force Refresh</button>
       <button @click="showDBStructure">Show DB Structure</button>
     </div>
@@ -253,12 +274,16 @@
         const messageValue = ref('');
         const firebaseInitialized = ref(true);
         const beepEnabled = ref(false);
+        const genderFilter = ref(['All']);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
         let unsubscribeMessages = null;
         let beepInterval = null;
         let audioContext = null;
+
+        // Gender options
+        const genderOptions = ['Male', 'Female', 'Non-binary', 'Trans', 'Gay', 'Lesbian'];
 
         // Custom marker icons
         const redIcon = L.icon({
@@ -269,7 +294,7 @@
         });
         const markerColors = ['blue', 'green', 'purple', 'orange', 'yellow'];
 
-        // Initialize audio context (requires user interaction)
+        // Initialize audio context
         function initAudioContext() {
           if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -281,15 +306,15 @@
           if (!audioContext) initAudioContext();
           const oscillator = audioContext.createOscillator();
           oscillator.type = 'sine';
-          oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz
+          oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
           oscillator.connect(audioContext.destination);
           oscillator.start();
-          oscillator.stop(audioContext.currentTime + 0.1); // 100ms duration
+          oscillator.stop(audioContext.currentTime + 0.1);
         }
 
         // Toggle beep alert
         function toggleBeep() {
-          initAudioContext(); // Ensure audio context is initialized
+          initAudioContext();
           beepEnabled.value = !beepEnabled.value;
           if (!beepEnabled.value && beepInterval) {
             clearInterval(beepInterval);
@@ -297,11 +322,28 @@
           }
         }
 
+        // Set user gender
+        function setGender() {
+          const gender = prompt('Select your gender:\n' + genderOptions.join(', '), currentUser.value.gender || '');
+          if (gender && genderOptions.includes(gender)) {
+            currentUser.value.gender = gender;
+            updateUserLocation();
+          } else if (gender !== null) {
+            alert('Invalid gender. Please choose from: ' + genderOptions.join(', '));
+          }
+        }
+
         // Authentication state
         onMounted(() => {
           auth.onAuthStateChanged((userData) => {
             if (userData) {
-              currentUser.value = { id: userData.uid, name: userData.displayName || 'Anonymous' };
+              currentUser.value = { id: userData.uid, name: userData.displayName || 'Anonymous', gender: null };
+              // Fetch user data to get gender
+              db.collection('users').doc(userData.uid).get().then(doc => {
+                if (doc.exists && doc.data().gender) {
+                  currentUser.value.gender = doc.data().gender;
+                }
+              });
               getUserLocation();
             } else {
               errorMessage.value = 'Please sign in';
@@ -310,7 +352,7 @@
           });
         });
 
-        // Initialize map when userLocation has valid coordinates
+        // Initialize map
         watch(userLocation, (newLocation) => {
           if (newLocation?.latitude && newLocation?.longitude && !map) {
             map = L.map('map').setView([newLocation.latitude, newLocation.longitude], 13);
@@ -342,7 +384,7 @@
               });
               return L.marker([user.latitude, user.longitude], { icon })
                 .addTo(map)
-                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(2) + 'km'} away)`);
+                .bindPopup(`${user.name} (${user.gender || 'Not set'}, ${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(2) + 'km'} away)`);
             });
           }
         });
@@ -372,9 +414,9 @@
             },
             (error) => {
               if (error.code === error.PERMISSION_DENIED) {
-                errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
+                errorMessage.value = 'Location access denied. Please enable location services.';
               } else if (error.message.includes('permissions policy')) {
-                errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
+                errorMessage.value = 'Geolocation disabled by permissions policy. Use HTTPS.';
               } else {
                 errorMessage.value = 'Failed to acquire location: ' + error.message;
               }
@@ -382,7 +424,7 @@
           );
         }
 
-        // Update user location and status in Firestore
+        // Update user location and status
         async function updateUserLocation() {
           if (currentUser.value?.id && userLocation.value?.latitude && userLocation.value?.longitude) {
             try {
@@ -391,6 +433,7 @@
                 status: status.value,
                 latitude: userLocation.value.latitude,
                 longitude: userLocation.value.longitude,
+                gender: currentUser.value.gender || null,
                 lastSeen: firebase.firestore.Timestamp.now()
               }, { merge: true });
             } catch (error) {
@@ -441,10 +484,10 @@
           }
         }
 
-        // Calculate distance between two coordinates (in meters)
+        // Calculate distance
         function calculateDistance(coord1, coord2) {
           if (!coord1?.latitude || !coord1?.longitude || !coord2?.latitude || !coord2?.longitude) return 0;
-          const R = 6371e3; // Earth's radius in meters
+          const R = 6371e3;
           const lat1 = coord1.latitude * Math.PI / 180;
           const lat2 = coord2.latitude * Math.PI / 180;
           const deltaLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
@@ -463,7 +506,10 @@
             return;
           }
           loadingNearbyUsers.value = true;
-          const q = db.collection('users').where('status', '==', 'ONLINE');
+          let q = db.collection('users').where('status', '==', 'ONLINE');
+          if (!genderFilter.value.includes('All') && genderFilter.value.length > 0) {
+            q = q.where('gender', 'in', genderFilter.value.slice(0, 10)); // Firestore 'in' limit
+          }
           q.onSnapshot((snapshot) => {
             nearbyUsers.value = snapshot.docs
               .filter(doc => doc.id !== currentUser.value.id)
@@ -476,10 +522,11 @@
                   distance, 
                   lastSeen: data.lastSeen,
                   latitude: data.latitude,
-                  longitude: data.longitude
+                  longitude: data.longitude,
+                  gender: data.gender
                 };
               })
-              .filter(user => user.distance < 10000); // 10km radius
+              .filter(user => user.distance < 10000);
             
             // Beep alert logic
             if (beepEnabled.value) {
@@ -490,9 +537,9 @@
               );
               if (closestUser.distance <= 1000) {
                 let interval;
-                if (closestUser.distance < 100) interval = 500; // 0.5s
-                else if (closestUser.distance < 500) interval = 1000; // 1s
-                else interval = 2000; // 2s
+                if (closestUser.distance < 100) interval = 500;
+                else if (closestUser.distance < 500) interval = 1000;
+                else interval = 2000;
                 beepInterval = setInterval(playBeep, interval);
               } else {
                 beepInterval = null;
@@ -529,7 +576,7 @@
           if (!timestamp) return 'Unknown time';
           const now = new Date();
           const date = timestamp.toDate();
-          const diff = (now - date) / 1000; // seconds
+          const diff = (now - date) / 1000;
           if (diff < 60) return `${Math.floor(diff)} seconds ago`;
           if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
           return `${Math.floor(diff / 3600)} hours ago`;
@@ -547,7 +594,7 @@
           if (status.value === 'ONLINE') fetchNearbyUsers();
         }
 
-        // Show DB structure (for debugging)
+        // Show DB structure
         function showDBStructure() {
           alert('Firestore Structure:\n' +
                 '- Collection: users\n' +
@@ -556,9 +603,10 @@
                 '    - status: "ONLINE" | "OFFLINE"\n' +
                 '    - latitude: number\n' +
                 '    - longitude: number\n' +
+                '    - gender: string (Male, Female, Non-binary, Trans, Gay, Lesbian, or null)\n' +
                 '    - lastSeen: timestamp\n' +
                 '- Collection: messages\n' +
-                '  - Document: {id}\n' +
+                '  - Document: {messageId}\n' +
                 '    - sender: object\n' +
                 '    - senderId: string\n' +
                 '    - text: string\n' +
@@ -582,8 +630,10 @@
           messageValue,
           firebaseInitialized,
           beepEnabled,
+          genderFilter,
           toggleStatus,
           changeName,
+          setGender,
           selectUser,
           sendMessage,
           toggleBeep,
