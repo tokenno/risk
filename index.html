@@ -76,61 +76,6 @@
     .user-list div:last-child {
       border-bottom: none;
     }
-    .chat-messages {
-      max-height: 150px;
-      overflow-y: auto;
-      border: 1px solid #555;
-      border-radius: 4px;
-      padding: 8px;
-      background: #2a2a2a;
-      margin-bottom: 8px;
-    }
-    .chat-messages div {
-      margin-bottom: 6px;
-      font-size: 0.85em;
-    }
-    .chat-messages strong {
-      color: #28a745;
-    }
-    .chat-messages span {
-      color: #888;
-      font-size: 0.75em;
-      margin-left: 4px;
-    }
-    input {
-      padding: 6px;
-      width: calc(100% - 70px);
-      border: 1px solid #555;
-      border-radius: 4px;
-      margin-right: 8px;
-      font-size: 0.85em;
-      background: transparent;
-      color: #e0e0e0;
-    }
-    input:focus {
-      outline: none;
-      border-color: #28a745;
-      box-shadow: 0 0 4px rgba(40, 167, 69, 0.5);
-    }
-    .debug {
-      font-size: 0.8em;
-      color: #aaa;
-      background: #2a2a2a;
-      font-family: 'Courier New', monospace;
-    }
-    .debug div {
-      margin-bottom: 4px;
-    }
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .user-info span {
-      font-size: 1.4em;
-      font-weight: bold;
-      color: #28a745;
-    }
     #map {
       height: 200px;
       border: 1px solid #555;
@@ -141,7 +86,7 @@
       .container {
         padding: 8px;
       }
-      button, input {
+      button {
         width: 100%;
         margin: 4px 0;
       }
@@ -192,24 +137,12 @@
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.length === 0">No users nearby</div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-for="user in nearbyUsers" :key="user.id" class="user-list" @click="selectUser(user)">
+      <div v-for="user in nearbyUsers" :key="user.id" class="user-list">
         <div>{{ user.name }}</div>
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
         <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
         <div>{{ formatRelativeTime(user.lastSeen) }}</div>
       </div>
-    </div>
-
-    <div class="section" v-if="selectedUser.name">
-      <h3>Chat with {{ selectedUser.name }}</h3>
-      <div class="chat-messages">
-        <div v-if="messages.length === 0">Start a conversation with {{ selectedUser.name }}</div>
-        <div v-for="msg in messages" :key="msg.id">
-          <strong>{{ msg.sender }}:</strong> {{ msg.text }} <span>{{ formatTime(msg.timestamp) }}</span>
-        </div>
-      </div>
-      <input v-model="messageInput" placeholder="Type a message...">
-      <button @click="sendMessage">Send</button>
     </div>
 
     <div class="section debug">
@@ -219,7 +152,6 @@
       <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
       <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
       <button @click="forceRefresh">Force Refresh</button>
-      <button @click="showDBStructure">Show DB Structure</button>
     </div>
   </div>
 
@@ -254,9 +186,6 @@
         const nearbyUsers = ref([]);
         const loadingNearby = ref(false);
         const errorMessage = ref('');
-        const selectedUser = ref({ name: '' });
-        const messages = ref([]);
-        const messageInput = ref('');
         const firebaseInitialized = ref(true);
         const soundEnabled = ref(true);
         const clearingStaleLocations = ref(false);
@@ -496,12 +425,6 @@
           }
         }
 
-        // Select user for chat
-        function selectUser(user) {
-          selectedUser.value = user;
-          messages.value = []; // Reset messages for new chat
-        }
-
         // Calculate distance between two coordinates (in meters)
         function calculateDistance(coord1, coord2) {
           const R = 6371e3; // Earth's radius in meters
@@ -547,22 +470,6 @@
           });
         }
 
-        // Send message
-        async function sendMessage() {
-          if (!messageInput.value || !selectedUser.value.id) return;
-          try {
-            await db.collection('users').doc(currentUserId.value).collection('messages').add({
-              sender: user.value,
-              text: messageInput.value,
-              timestamp: new Date().toISOString(),
-              recipient: selectedUser.value.id
-            });
-            messageInput.value = '';
-          } catch (error) {
-            errorMessage.value = 'Failed to send message: ' + error.message;
-          }
-        }
-
         // Format relative time
         function formatRelativeTime(timestamp) {
           const now = new Date();
@@ -573,33 +480,10 @@
           return `${Math.floor(diff / 3600)} hours ago`;
         }
 
-        // Format message time
-        function formatTime(timestamp) {
-          return new Date(timestamp).toLocaleTimeString();
-        }
-
         // Force refresh
         function forceRefresh() {
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
-        }
-
-        // Show DB structure (for debugging)
-        function showDBStructure() {
-          alert('Firestore Structure:\n' +
-                '- Collection: users\n' +
-                '  - Document: {userId}\n' +
-                '    - name: string\n' +
-                '    - status: "ONLINE" | "OFFLINE"\n' +
-                '    - latitude: number\n' +
-                '    - longitude: number\n' +
-                '    - lastSeen: string (ISO timestamp)\n' +
-                '    - Subcollection: messages\n' +
-                '      - Document: {messageId}\n' +
-                '        - sender: string\n' +
-                '        - text: string\n' +
-                '        - timestamp: string\n' +
-                '        - recipient: string');
         }
 
         return {
@@ -611,9 +495,6 @@
           nearbyUsers,
           loadingNearby,
           errorMessage,
-          selectedUser,
-          messages,
-          messageInput,
           firebaseInitialized,
           soundEnabled,
           clearingStaleLocations,
@@ -621,12 +502,8 @@
           changeName,
           toggleSound,
           clearStaleLocations,
-          selectUser,
-          sendMessage,
           formatRelativeTime,
-          formatTime,
-          forceRefresh,
-          showDBStructure
+          forceRefresh
         };
       }
     }).mount('#app');
