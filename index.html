@@ -151,10 +151,10 @@
 <body>
   <div id="app" class="container">
     <div class="section">
-      <div v-if="currentUser" class="user-info">
-        <span>{{ currentUser.name.charAt(0).toUpperCase() }}</span>
+      <div v-if="user" class="user-info">
+        <span>{{ user.charAt(0).toUpperCase() }}</span>
         <div>
-          <div>{{ currentUser.name }}</div>
+          <div>{{ user }}</div>
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
         </div>
@@ -168,46 +168,46 @@
 
     <div class="section">
       <h3>Your Location</h3>
-      <div v-if="userLocation.latitude && userLocation.longitude">
-        <div>Latitude: {{ userLocation.latitude.toFixed(6) }}</div>
-        <div>Longitude: {{ userLocation.longitude.toFixed(6) }}</div>
+      <div v-if="userLocation">
+        <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
+        <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
         <div id="map"></div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-if="!userLocation.latitude && !errorMessage">Acquiring your location...</div>
+      <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
     </div>
 
     <div class="section">
       <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
-      <div v-if="loadingNearbyUsers">Loading nearby users...</div>
-      <div v-else-if="!loadingNearbyUsers && nearbyUsers.length === 0">No users nearby</div>
-      <div v-if="userError" class="error">{{ userError.message }}</div>
+      <div v-if="loadingNearby">Loading nearby users...</div>
+      <div v-if="!loadingNearby && nearbyUsers.length === 0">No users nearby</div>
+      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
       <div v-for="user in nearbyUsers" :key="user.id" class="user-list" @click="selectUser(user)">
         <div>{{ user.name }}</div>
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-        <div v-else>{{ (user.distance/1000).toFixed(2) }}km away</div>
-        <div>{{ formatRelativeTime(user?.lastSeen?.toDate()) }}</div>
+        <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+        <div>{{ formatRelativeTime(user.lastSeen) }}</div>
       </div>
     </div>
 
-    <div class="section" v-if="selectedUser?.name">
-      <h3>Chat with {{ selectedUser?.name }}</h3>
+    <div class="section" v-if="selectedUser.name">
+      <h3>Chat with {{ selectedUser.name }}</h3>
       <div class="chat-messages">
-        <div v-if="messages.length === 0">Start a conversation with {{ selectedUser?.name }}</div>
-        <div v-for="message in messages" :key="message?.id">
-          <strong>{{ message.sender.name }}:</strong> {{ message?.text }} <span>{{ formatTimeTimestamp(message?.timestamp?.toDate()) }}</span>
+        <div v-if="messages.length === 0">Start a conversation with {{ selectedUser.name }}</div>
+        <div v-for="msg in messages" :key="msg.id">
+          <strong>{{ msg.sender }}:</strong> {{ msg.text }} <span>{{ formatTime(msg.timestamp) }}</span>
         </div>
       </div>
-      <input v-model="messageValue" placeholder="Type a message...">
+      <input v-model="messageInput" placeholder="Type a message...">
       <button @click="sendMessage">Send</button>
     </div>
 
     <div class="section debug">
       <h3>Debug Information</h3>
       <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-      <div>User ID: {{ currentUser?.id || 'Not set' }}</div>
-      <div>Location: {{ userLocation.latitude && userLocation.longitude ? 'Valid' : 'Invalid' }}</div>
-      <div>Last Update: {{ lastLocationUpdate?.timestamp ? new Date(lastLocationUpdate?.timestamp).toLocaleTimeString() : 'Never' }}</div>
+      <div>User ID: {{ currentUserId || 'Not set' }}</div>
+      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
+      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
       <button @click="forceRefresh">Force Refresh</button>
       <button @click="showDBStructure">Show DB Structure</button>
     </div>
@@ -222,7 +222,7 @@
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
       projectId: "risk-ec382",
-      storageBucket: "risk-ec382.storage.app",
+      storageBucket: "risk-ec382.firebasestorage.app",
       messagingSenderId: "177105151944",
       appId: "1:177105151944:web:758b928eb83ccb894902fd",
       measurementId: "G-2LKEG2N7ZD"
@@ -236,38 +236,28 @@
 
     createApp({
       setup() {
-        const user = ref(null); // Deprecated, using currentUser
+        const user = ref(null);
         const status = ref('OFFLINE');
-        const currentUser = ref(null);
-        const userLocation = ref({ latitude: null, longitude: null });
+        const currentUserId = ref(null);
+        const userLocation = ref(null);
         const lastLocationUpdate = ref(null);
         const nearbyUsers = ref([]);
-        const loadingNearbyUsers = ref(false);
+        const loadingNearby = ref(false);
         const errorMessage = ref('');
-        const userError = ref('');
-        const selectedUser = ref(null);
+        const selectedUser = ref({ name: '' });
         const messages = ref([]);
-        const messageValue = ref('');
+        const messageInput = ref('');
         const firebaseInitialized = ref(true);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
-        let unsubscribeMessages = null;
-
-        // Custom marker icons
-        const redIcon = L.icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-          popupAnchor: [1, -34]
-        });
-        const markerColors = ['blue', 'green', 'purple', 'orange', 'yellow'];
 
         // Authentication state
         onMounted(() => {
           auth.onAuthStateChanged((userData) => {
             if (userData) {
-              currentUser.value = { id: userData.uid, name: userData.displayName || 'Anonymous' };
+              currentUserId.value = userData.uid;
+              user.value = userData.displayName || 'Anonymous';
               getUserLocation();
             } else {
               errorMessage.value = 'Please sign in';
@@ -276,20 +266,20 @@
           });
         });
 
-        // Initialize map when userLocation has valid coordinates
+        // Initialize map when userLocation is set
         watch(userLocation, (newLocation) => {
-          if (newLocation?.latitude && newLocation?.longitude && !map) {
-            map = L.map('map').setView([newLocation.latitude, newLocation.longitude], 13);
+          if (newLocation && !map) {
+            map = L.map('map').setView(newLocation, 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
               maxZoom: 18
             }).addTo(map);
-            userMarker = L.marker([newLocation.latitude, newLocation.longitude], { icon: redIcon }).addTo(map).bindPopup('You are here');
+            userMarker = L.marker(newLocation).addTo(map).bindPopup('You are here');
           }
-          if (map && newLocation?.latitude && newLocation?.longitude) {
-            map.setView([newLocation.latitude, newLocation.longitude], 13);
+          if (map && newLocation) {
+            map.setView(newLocation, 13);
             if (userMarker) {
-              userMarker.setLatLng([newLocation.latitude, newLocation.longitude]);
+              userMarker.setLatLng(newLocation);
             }
           }
         });
@@ -298,17 +288,10 @@
         watch(nearbyUsers, (newUsers) => {
           if (map) {
             nearbyMarkers.forEach(marker => map.removeLayer(marker));
-            nearbyMarkers = newUsers.map((user, index) => {
-              const colorIndex = index % markerColors.length;
-              const icon = L.icon({
-                iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${markerColors[colorIndex]}.png`,
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34]
-              });
-              return L.marker([user.latitude, user.longitude], { icon })
+            nearbyMarkers = newUsers.map(user => {
+              return L.marker([user.latitude, user.longitude])
                 .addTo(map)
-                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(2) + 'km'} away)`);
+                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away)`);
             });
           }
         });
@@ -331,8 +314,8 @@
           }
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              userLocation.value = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-              lastLocationUpdate.value = { timestamp: new Date() };
+              userLocation.value = [position.coords.latitude, position.coords.longitude];
+              lastLocationUpdate.value = Date.now();
               updateUserLocation();
               if (status.value === 'ONLINE') fetchNearbyUsers();
             },
@@ -350,14 +333,14 @@
 
         // Update user location and status in Firestore
         async function updateUserLocation() {
-          if (currentUser.value?.id && userLocation.value?.latitude && userLocation.value?.longitude) {
+          if (currentUserId.value && userLocation.value) {
             try {
-              await db.collection('users').doc(currentUser.value.id).set({
-                name: currentUser.value.name,
+              await db.collection('users').doc(currentUserId.value).set({
+                name: user.value,
                 status: status.value,
-                latitude: userLocation.value.latitude,
-                longitude: userLocation.value.longitude,
-                lastSeen: firebase.firestore.Timestamp.now()
+                latitude: userLocation.value[0],
+                longitude: userLocation.value[1],
+                lastSeen: new Date().toISOString()
               }, { merge: true });
             } catch (error) {
               errorMessage.value = 'Failed to update location: ' + error.message;
@@ -378,9 +361,9 @@
 
         // Change user name
         async function changeName() {
-          const newName = prompt('Enter new name:', currentUser.value.name);
+          const newName = prompt('Enter new name:', user.value);
           if (newName) {
-            currentUser.value.name = newName;
+            user.value = newName;
             await updateUserLocation();
           }
         }
@@ -388,29 +371,16 @@
         // Select user for chat
         function selectUser(user) {
           selectedUser.value = user;
-          messages.value = [];
-          if (unsubscribeMessages) unsubscribeMessages();
-          if (user?.id && currentUser.value?.id) {
-            const q = db.collection('messages').where('participants', 'array-contains', currentUser.value.id);
-            unsubscribeMessages = q.onSnapshot((snapshot) => {
-              messages.value = snapshot.docs
-                .map(doc => ({ id: doc.id, sender: doc.data().sender, text: doc.data().text, timestamp: doc.data().timestamp, participants: doc.data().participants }))
-                .filter(msg => msg.participants.includes(user.id))
-                .sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
-            }, (error) => {
-              errorMessage.value = 'Failed to load messages: ' + error.message;
-            });
-          }
+          messages.value = []; // Reset messages for new chat
         }
 
         // Calculate distance between two coordinates (in meters)
         function calculateDistance(coord1, coord2) {
-          if (!coord1?.latitude || !coord1?.longitude || !coord2?.latitude || !coord2?.longitude) return 0;
           const R = 6371e3; // Earth's radius in meters
-          const lat1 = coord1.latitude * Math.PI / 180;
-          const lat2 = coord2.latitude * Math.PI / 180;
-          const deltaLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
-          const deltaLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
+          const lat1 = coord1[0] * Math.PI / 180;
+          const lat2 = coord2[0] * Math.PI / 180;
+          const deltaLat = (coord2[0] - coord1[0]) * Math.PI / 180;
+          const deltaLon = (coord2[1] - coord1[1]) * Math.PI / 180;
           const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
                     Math.cos(lat1) * Math.cos(lat2) *
                     Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
@@ -420,18 +390,18 @@
 
         // Fetch nearby users
         function fetchNearbyUsers() {
-          if (!userLocation.value?.latitude || !userLocation.value?.longitude) {
+          if (!userLocation.value) {
             errorMessage.value = 'Location not available';
             return;
           }
-          loadingNearbyUsers.value = true;
+          loadingNearby.value = true;
           const q = db.collection('users').where('status', '==', 'ONLINE');
           q.onSnapshot((snapshot) => {
             nearbyUsers.value = snapshot.docs
-              .filter(doc => doc.id !== currentUser.value.id)
+              .filter(doc => doc.id !== currentUserId.value)
               .map(doc => {
                 const data = doc.data();
-                const distance = calculateDistance(userLocation.value, { latitude: data.latitude, longitude: data.longitude });
+                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
                 return { 
                   id: doc.id, 
                   name: data.name, 
@@ -442,26 +412,24 @@
                 };
               })
               .filter(user => user.distance < 10000); // 10km radius
-            loadingNearbyUsers.value = false;
+            loadingNearby.value = false;
           }, (error) => {
             errorMessage.value = 'Failed to load nearby users: ' + error.message;
-            loadingNearbyUsers.value = false;
+            loadingNearby.value = false;
           });
         }
 
         // Send message
         async function sendMessage() {
-          if (!messageValue.value || !selectedUser.value?.id) return;
+          if (!messageInput.value || !selectedUser.value.id) return;
           try {
-            await db.collection('messages').add({
-              sender: currentUser.value,
-              senderId: currentUser.value.id,
-              text: messageValue.value,
-              timestamp: firebase.firestore.Timestamp.now(),
-              recipientId: selectedUser.value.id,
-              participants: [currentUser.value.id, selectedUser.value.id]
+            await db.collection('users').doc(currentUserId.value).collection('messages').add({
+              sender: user.value,
+              text: messageInput.value,
+              timestamp: new Date().toISOString(),
+              recipient: selectedUser.value.id
             });
-            messageValue.value = '';
+            messageInput.value = '';
           } catch (error) {
             errorMessage.value = 'Failed to send message: ' + error.message;
           }
@@ -469,9 +437,8 @@
 
         // Format relative time
         function formatRelativeTime(timestamp) {
-          if (!timestamp) return 'Unknown time';
           const now = new Date();
-          const date = timestamp.toDate();
+          const date = new Date(timestamp);
           const diff = (now - date) / 1000; // seconds
           if (diff < 60) return `${Math.floor(diff)} seconds ago`;
           if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
@@ -480,8 +447,7 @@
 
         // Format message time
         function formatTime(timestamp) {
-          if (!timestamp) return 'Unknown time';
-          return timestamp.toDate().toLocaleTimeString();
+          return new Date(timestamp).toLocaleTimeString();
         }
 
         // Force refresh
@@ -499,30 +465,27 @@
                 '    - status: "ONLINE" | "OFFLINE"\n' +
                 '    - latitude: number\n' +
                 '    - longitude: number\n' +
-                '    - lastSeen: timestamp\n' +
-                '- Collection: messages\n' +
-                '  - Document: {messageId}\n' +
-                '    - sender: object\n' +
-                '    - senderId: string\n' +
-                '    - text: string\n' +
-                '    - timestamp: timestamp\n' +
-                '    - recipientId: string\n' +
-                '    - participants: array<string>');
+                '    - lastSeen: string (ISO timestamp)\n' +
+                '    - Subcollection: messages\n' +
+                '      - Document: {messageId}\n' +
+                '        - sender: string\n' +
+                '        - text: string\n' +
+                '        - timestamp: string\n' +
+                '        - recipient: string');
         }
 
         return {
           user,
           status,
-          currentUser,
+          currentUserId,
           userLocation,
           lastLocationUpdate,
           nearbyUsers,
-          loadingNearbyUsers,
+          loadingNearby,
           errorMessage,
-          userError,
           selectedUser,
           messages,
-          messageValue,
+          messageInput,
           firebaseInitialized,
           toggleStatus,
           changeName,
