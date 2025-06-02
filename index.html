@@ -216,7 +216,6 @@
   <script>
     // Import Vue
     const { createApp, ref, onMounted, watch } = Vue;
-      
 
     // Firebase configuration
     const firebaseConfig = {
@@ -234,7 +233,6 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
     firebase.analytics();
-      
 
     createApp({
       setup() {
@@ -422,38 +420,20 @@
         }
 
         // Send message
-       async function sendMessage() {
-  const auth = getAuth();
-  if (!auth.currentUser) {
-    errorMessage.value = 'You must be logged in to send a message';
-    console.error('No authenticated user');
-    return;
-  }
-  if (!messageInput.value || !selectedUser.value.id) {
-    errorMessage.value = 'Message or recipient not selected';
-    return;
-  }
-  try {
-    const message = {
-      senderId: auth.currentUser.uid, // Use auth UID directly
-      sender: user.value, // Keep if needed for display (e.g., username)
-      text: messageInput.value,
-      timestamp: new Date().toISOString(),
-      recipient: selectedUser.value.id,
-      participants: [auth.currentUser.uid, selectedUser.value.id] // For potential read access
-    };
-    console.log('Sending message:', message);
-    // Write to the user's messages subcollection
-    await addDoc(
-      collection(db, 'users', auth.currentUser.uid, 'messages'),
-      message
-    );
-    messageInput.value = '';
-  } catch (error) {
-    console.error('Error sending message:', error.code, error.message);
-    errorMessage.value = 'Failed to send message: ' + error.message;
-  }
-}
+        async function sendMessage() {
+          if (!messageInput.value || !selectedUser.value.id) return;
+          try {
+            await db.collection('users').doc(currentUserId.value).collection('messages').add({
+              sender: user.value,
+              text: messageInput.value,
+              timestamp: new Date().toISOString(),
+              recipient: selectedUser.value.id
+            });
+            messageInput.value = '';
+          } catch (error) {
+            errorMessage.value = 'Failed to send message: ' + error.message;
+          }
+        }
 
         // Format relative time
         function formatRelativeTime(timestamp) {
@@ -518,6 +498,46 @@
         };
       }
     }).mount('#app');
+      
+      // Web Audio API setup
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+// Function to play a beep sound
+function playBeep(frequency = 440, duration = 0.1) {
+  const oscillator = audioContext.createOscillator();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+  oscillator.connect(audioContext.destination);
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + duration);
+}
+
+// Function to handle proximity alerts
+function checkProximityAndBeep(nearbyUsers, previousDistances = {}) {
+  nearbyUsers.forEach(user => {
+    if (user.distance < 30) { // Check if user is within 30 meters
+      let interval = 1000; // Default interval (1 second)
+      
+      // Calculate movement (if previous distance exists)
+      if (previousDistances[user.id]) {
+        const distanceChange = previousDistances[user.id] - user.distance;
+        if (distanceChange > 0) { // User is moving closer
+          interval = Math.max(100, 1000 - distanceChange * 50); // Increase frequency
+        }
+      }
+      
+      // Play beep with adjusted interval
+      playBeep();
+      setTimeout(() => checkProximityAndBeep(nearbyUsers, { ...previousDistances, [user.id]: user.distance }), interval);
+    }
+  });
+}
+
+// Example integration in your app (assuming nearbyUsers is available)
+setInterval(() => {
+  checkProximityAndBeep(app.nearbyUsers); // Replace 'app.nearbyUsers' with your data source
+}, 1000);
+      
   </script>
 </body>
 </html>
