@@ -252,32 +252,51 @@
         // Generate unique sound profile for each user
         function generateSoundProfile(userId, userName) {
           if (!userSoundProfiles.has(userId)) {
+            const nameHash = userName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             userSoundProfiles.set(userId, {
               id: userId,
               name: userName,
-              frequency: 300 + Math.random() * 700, // 300-1000 Hz
-              bpm: 60 + Math.random() * 100 // 60-160 BPM
+              frequency: 300 + (nameHash % 700), // 300-1000 Hz based on name
+              bpm: 60 + (nameHash % 100), // 60-160 BPM based on name
+              waveType: ['sine', 'square', 'sawtooth', 'triangle'][nameHash % 4],
+              pan: (nameHash % 200 - 100) / 100 // -1 to 1 based on name
             });
           }
           return userSoundProfiles.get(userId);
         }
 
-        // Play beep with custom frequency
-        function playBeep(frequency = 800) {
+        // Play beep with custom frequency and distance-based effects
+        function playBeep(profile, distance) {
           if (!audioContext || !soundEnabled.value) return;
           
           const oscillator = audioContext.createOscillator();
           const gainNode = audioContext.createGain();
+          const panner = audioContext.createStereoPanner();
           
-          oscillator.type = 'sine';
-          oscillator.frequency.value = frequency;
-          gainNode.gain.value = 0.1;
+          oscillator.type = profile.waveType;
+          oscillator.frequency.value = profile.frequency;
+          
+          // Distance-based volume (quieter when farther)
+          const baseVolume = 0.15;
+          const distanceVolume = Math.max(0, baseVolume * (1 - Math.min(1, distance / 10)));
+          
+          // ADSR envelope
+          const now = audioContext.currentTime;
+          gainNode.gain.setValueAtTime(0, now);
+          gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.02); // Attack
+          gainNode.gain.linearRampToValueAtTime(distanceVolume * 0.7, now + 0.05); // Decay
+          gainNode.gain.setValueAtTime(distanceVolume * 0.7, now + 0.08); // Sustain
+          gainNode.gain.linearRampToValueAtTime(0, now + 0.1); // Release
+          
+          // Panning based on user profile
+          panner.pan.value = profile.pan;
           
           oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
+          gainNode.connect(panner);
+          panner.connect(audioContext.destination);
           
           oscillator.start();
-          oscillator.stop(audioContext.currentTime + 0.1);
+          oscillator.stop(now + 0.1);
         }
 
         // Update beeps for all users within 5m
@@ -296,9 +315,9 @@
               const interval = 60000 / profile.bpm; // Convert BPM to ms
               
               // Play immediately and set interval
-              playBeep(profile.frequency);
+              playBeep(profile, user.distance);
               const intervalId = setInterval(() => {
-                playBeep(profile.frequency);
+                playBeep(profile, user.distance);
               }, interval);
               
               userBeepIntervals.set(user.id, intervalId);
@@ -319,7 +338,6 @@
           }
         }
 
-        // [Rest of your existing functions remain exactly the same...]
         function initMap(location) {
           try {
             nextTick(() => {
