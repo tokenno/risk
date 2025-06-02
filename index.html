@@ -48,6 +48,7 @@
       cursor: pointer;
       font-size: 0.85em;
       transition: background 0.2s;
+      margin-right: 5px;
     }
     button:hover {
       background: #218838;
@@ -151,10 +152,10 @@
 <body>
   <div id="app" class="container">
     <div class="section">
-      <div v-if="user" class="user-info">
-        <span>{{ user.charAt(0).toUpperCase() }}</span>
+      <div v-if="currentUser" class="user-info">
+        <span>{{ currentUser.name.charAt(0).toUpperCase() }}</span>
         <div>
-          <div>{{ user }}</div>
+          <div>{{ currentUser.name }}</div>
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
         </div>
@@ -164,50 +165,52 @@
     <div class="section">
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
+      <button @click="toggleBeep">{{ beepEnabled ? 'Disable Beep' : 'Enable Beep' }}</button>
     </div>
 
     <div class="section">
       <h3>Your Location</h3>
-      <div v-if="userLocation">
-        <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
-        <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
+      <div v-if="userLocation.latitude && userLocation.longitude">
+        <div>Latitude: {{ userLocation.latitude.toFixed(6) }}</div>
+        <div>Longitude: {{ userLocation.longitude.toFixed(6) }}</div>
         <div id="map"></div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
+      <div v-if="!userLocation.latitude && !errorMessage">Acquiring your location...</div>
     </div>
 
     <div class="section">
       <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
-      <div v-if="loadingNearby">Loading nearby users...</div>
-      <div v-if="!loadingNearby && nearbyUsers.length === 0">No users nearby</div>
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
+      <div v-if="loadingNearbyUsers">Loading nearby users...</div>
+      <div v-else-if="!loadingNearbyUsers && nearbyUsers.length === 0">No users nearby</div>
+      <div v-if="userError" class="error">{{ userError.message }}</div>
       <div v-for="user in nearbyUsers" :key="user.id" class="user-list" @click="selectUser(user)">
         <div>{{ user.name }}</div>
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-        <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-        <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+        <div v-else>{{ (user.distance/1000).toFixed(2) }}km away</div>
+        <div>{{ formatRelativeTime(user?.lastSeen?.toDate()) }}</div>
       </div>
     </div>
 
-    <div class="section" v-if="selectedUser.name">
-      <h3>Chat with {{ selectedUser.name }}</h3>
+    <div class="section" v-if="selectedUser?.name">
+      <h3>Chat with {{ selectedUser?.name }}</h3>
       <div class="chat-messages">
-        <div v-if="messages.length === 0">Start a conversation with {{ selectedUser.name }}</div>
-        <div v-for="msg in messages" :key="msg.id">
-          <strong>{{ msg.sender }}:</strong> {{ msg.text }} <span>{{ formatTime(msg.timestamp) }}</span>
+        <div v-if="messages.length === 0">Start a conversation with {{ selectedUser?.name }}</div>
+        <div v-for="message in messages" :key="message?.id">
+          <strong>{{ message.sender.name }}:</strong> {{ message?.text }} <span>{{ formatTime(message?.timestamp?.toDate()) }}</span>
         </div>
       </div>
-      <input v-model="messageInput" placeholder="Type a message...">
+      <input v-model="messageValue" placeholder="Type a message...">
       <button @click="sendMessage">Send</button>
     </div>
 
     <div class="section debug">
       <h3>Debug Information</h3>
       <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-      <div>User ID: {{ currentUserId || 'Not set' }}</div>
-      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
-      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+      <div>User ID: {{ currentUser?.id || 'Not set' }}</div>
+      <div>Location: {{ userLocation.latitude && userLocation.longitude ? 'Valid' : 'Invalid' }}</div>
+      <div>Last Update: {{ lastLocationUpdate?.timestamp ? new Date(lastLocationUpdate?.timestamp).toLocaleTimeString() : 'Never' }}</div>
+      <div>Beep Alert: {{ beepEnabled ? 'Enabled' : 'Disabled' }}</div>
       <button @click="forceRefresh">Force Refresh</button>
       <button @click="showDBStructure">Show DB Structure</button>
     </div>
@@ -236,28 +239,69 @@
 
     createApp({
       setup() {
-        const user = ref(null);
+        const user = ref(null); // Deprecated, using currentUser
         const status = ref('OFFLINE');
-        const currentUserId = ref(null);
-        const userLocation = ref(null);
+        const currentUser = ref(null);
+        const userLocation = ref({ latitude: null, longitude: null });
         const lastLocationUpdate = ref(null);
         const nearbyUsers = ref([]);
-        const loadingNearby = ref(false);
+        const loadingNearbyUsers = ref(false);
         const errorMessage = ref('');
-        const selectedUser = ref({ name: '' });
+        const userError = ref('');
+        const selectedUser = ref(null);
         const messages = ref([]);
-        const messageInput = ref('');
+        const messageValue = ref('');
         const firebaseInitialized = ref(true);
+        const beepEnabled = ref(false);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
+        let unsubscribeMessages = null;
+        let beepInterval = null;
+        let audioContext = null;
+
+        // Custom marker icons
+        const redIcon = L.icon({
+          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34]
+        });
+        const markerColors = ['blue', 'green', 'purple', 'orange', 'yellow'];
+
+        // Initialize audio context (requires user interaction)
+        function initAudioContext() {
+          if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          }
+        }
+
+        // Play beep sound
+        function playBeep() {
+          if (!audioContext) initAudioContext();
+          const oscillator = audioContext.createOscillator();
+          oscillator.type = 'sine';
+          oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz
+          oscillator.connect(audioContext.destination);
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.1); // 100ms duration
+        }
+
+        // Toggle beep alert
+        function toggleBeep() {
+          initAudioContext(); // Ensure audio context is initialized
+          beepEnabled.value = !beepEnabled.value;
+          if (!beepEnabled.value && beepInterval) {
+            clearInterval(beepInterval);
+            beepInterval = null;
+          }
+        }
 
         // Authentication state
         onMounted(() => {
           auth.onAuthStateChanged((userData) => {
             if (userData) {
-              currentUserId.value = userData.uid;
-              user.value = userData.displayName || 'Anonymous';
+              currentUser.value = { id: userData.uid, name: userData.displayName || 'Anonymous' };
               getUserLocation();
             } else {
               errorMessage.value = 'Please sign in';
@@ -266,20 +310,20 @@
           });
         });
 
-        // Initialize map when userLocation is set
+        // Initialize map when userLocation has valid coordinates
         watch(userLocation, (newLocation) => {
-          if (newLocation && !map) {
-            map = L.map('map').setView(newLocation, 13);
+          if (newLocation?.latitude && newLocation?.longitude && !map) {
+            map = L.map('map').setView([newLocation.latitude, newLocation.longitude], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+              attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
               maxZoom: 18
             }).addTo(map);
-            userMarker = L.marker(newLocation).addTo(map).bindPopup('You are here');
+            userMarker = L.marker([newLocation.latitude, newLocation.longitude], { icon: redIcon }).addTo(map).bindPopup('You are here');
           }
-          if (map && newLocation) {
-            map.setView(newLocation, 13);
+          if (map && newLocation?.latitude && newLocation?.longitude) {
+            map.setView([newLocation.latitude, newLocation.longitude], 13);
             if (userMarker) {
-              userMarker.setLatLng(newLocation);
+              userMarker.setLatLng([newLocation.latitude, newLocation.longitude]);
             }
           }
         });
@@ -288,10 +332,17 @@
         watch(nearbyUsers, (newUsers) => {
           if (map) {
             nearbyMarkers.forEach(marker => map.removeLayer(marker));
-            nearbyMarkers = newUsers.map(user => {
-              return L.marker([user.latitude, user.longitude])
+            nearbyMarkers = newUsers.map((user, index) => {
+              const colorIndex = index % markerColors.length;
+              const icon = L.icon({
+                iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${markerColors[colorIndex]}.png`,
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34]
+              });
+              return L.marker([user.latitude, user.longitude], { icon })
                 .addTo(map)
-                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away)`);
+                .bindPopup(`${user.name} (${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(2) + 'km'} away)`);
             });
           }
         });
@@ -314,8 +365,8 @@
           }
           navigator.geolocation.getCurrentPosition(
             (position) => {
-              userLocation.value = [position.coords.latitude, position.coords.longitude];
-              lastLocationUpdate.value = Date.now();
+              userLocation.value = { latitude: position.coords.latitude, longitude: position.coords.longitude };
+              lastLocationUpdate.value = { timestamp: new Date() };
               updateUserLocation();
               if (status.value === 'ONLINE') fetchNearbyUsers();
             },
@@ -333,14 +384,14 @@
 
         // Update user location and status in Firestore
         async function updateUserLocation() {
-          if (currentUserId.value && userLocation.value) {
+          if (currentUser.value?.id && userLocation.value?.latitude && userLocation.value?.longitude) {
             try {
-              await db.collection('users').doc(currentUserId.value).set({
-                name: user.value,
+              await db.collection('users').doc(currentUser.value.id).set({
+                name: currentUser.value.name,
                 status: status.value,
-                latitude: userLocation.value[0],
-                longitude: userLocation.value[1],
-                lastSeen: new Date().toISOString()
+                latitude: userLocation.value.latitude,
+                longitude: userLocation.value.longitude,
+                lastSeen: firebase.firestore.Timestamp.now()
               }, { merge: true });
             } catch (error) {
               errorMessage.value = 'Failed to update location: ' + error.message;
@@ -356,14 +407,18 @@
             fetchNearbyUsers();
           } else {
             nearbyUsers.value = [];
+            if (beepInterval) {
+              clearInterval(beepInterval);
+              beepInterval = null;
+            }
           }
         }
 
         // Change user name
         async function changeName() {
-          const newName = prompt('Enter new name:', user.value);
+          const newName = prompt('Enter new name:', currentUser.value.name);
           if (newName) {
-            user.value = newName;
+            currentUser.value.name = newName;
             await updateUserLocation();
           }
         }
@@ -371,16 +426,29 @@
         // Select user for chat
         function selectUser(user) {
           selectedUser.value = user;
-          messages.value = []; // Reset messages for new chat
+          messages.value = [];
+          if (unsubscribeMessages) unsubscribeMessages();
+          if (user?.id && currentUser.value?.id) {
+            const q = db.collection('messages').where('participants', 'array-contains', currentUser.value.id);
+            unsubscribeMessages = q.onSnapshot((snapshot) => {
+              messages.value = snapshot.docs
+                .map(doc => ({ id: doc.id, sender: doc.data().sender, text: doc.data().text, timestamp: doc.data().timestamp, participants: doc.data().participants }))
+                .filter(msg => msg.participants.includes(user.id))
+                .sort((a, b) => a.timestamp.toDate() - b.timestamp.toDate());
+            }, (error) => {
+              errorMessage.value = 'Failed to load messages: ' + error.message;
+            });
+          }
         }
 
         // Calculate distance between two coordinates (in meters)
         function calculateDistance(coord1, coord2) {
+          if (!coord1?.latitude || !coord1?.longitude || !coord2?.latitude || !coord2?.longitude) return 0;
           const R = 6371e3; // Earth's radius in meters
-          const lat1 = coord1[0] * Math.PI / 180;
-          const lat2 = coord2[0] * Math.PI / 180;
-          const deltaLat = (coord2[0] - coord1[0]) * Math.PI / 180;
-          const deltaLon = (coord2[1] - coord1[1]) * Math.PI / 180;
+          const lat1 = coord1.latitude * Math.PI / 180;
+          const lat2 = coord2.latitude * Math.PI / 180;
+          const deltaLat = (coord2.latitude - coord1.latitude) * Math.PI / 180;
+          const deltaLon = (coord2.longitude - coord1.longitude) * Math.PI / 180;
           const a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
                     Math.cos(lat1) * Math.cos(lat2) *
                     Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
@@ -390,18 +458,18 @@
 
         // Fetch nearby users
         function fetchNearbyUsers() {
-          if (!userLocation.value) {
+          if (!userLocation.value?.latitude || !userLocation.value?.longitude) {
             errorMessage.value = 'Location not available';
             return;
           }
-          loadingNearby.value = true;
+          loadingNearbyUsers.value = true;
           const q = db.collection('users').where('status', '==', 'ONLINE');
           q.onSnapshot((snapshot) => {
             nearbyUsers.value = snapshot.docs
-              .filter(doc => doc.id !== currentUserId.value)
+              .filter(doc => doc.id !== currentUser.value.id)
               .map(doc => {
                 const data = doc.data();
-                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+                const distance = calculateDistance(userLocation.value, { latitude: data.latitude, longitude: data.longitude });
                 return { 
                   id: doc.id, 
                   name: data.name, 
@@ -412,24 +480,45 @@
                 };
               })
               .filter(user => user.distance < 10000); // 10km radius
-            loadingNearby.value = false;
+            
+            // Beep alert logic
+            if (beepEnabled.value) {
+              if (beepInterval) clearInterval(beepInterval);
+              const closestUser = nearbyUsers.value.reduce((closest, user) => 
+                user.distance < closest.distance ? user : closest, 
+                { distance: Infinity }
+              );
+              if (closestUser.distance <= 1000) {
+                let interval;
+                if (closestUser.distance < 100) interval = 500; // 0.5s
+                else if (closestUser.distance < 500) interval = 1000; // 1s
+                else interval = 2000; // 2s
+                beepInterval = setInterval(playBeep, interval);
+              } else {
+                beepInterval = null;
+              }
+            }
+            
+            loadingNearbyUsers.value = false;
           }, (error) => {
             errorMessage.value = 'Failed to load nearby users: ' + error.message;
-            loadingNearby.value = false;
+            loadingNearbyUsers.value = false;
           });
         }
 
         // Send message
         async function sendMessage() {
-          if (!messageInput.value || !selectedUser.value.id) return;
+          if (!messageValue.value || !selectedUser.value?.id) return;
           try {
-            await db.collection('users').doc(currentUserId.value).collection('messages').add({
-              sender: user.value,
-              text: messageInput.value,
-              timestamp: new Date().toISOString(),
-              recipient: selectedUser.value.id
+            await db.collection('messages').add({
+              sender: currentUser.value,
+              senderId: currentUser.value.id,
+              text: messageValue.value,
+              timestamp: firebase.firestore.Timestamp.now(),
+              recipientId: selectedUser.value.id,
+              participants: [currentUser.value.id, selectedUser.value.id]
             });
-            messageInput.value = '';
+            messageValue.value = '';
           } catch (error) {
             errorMessage.value = 'Failed to send message: ' + error.message;
           }
@@ -437,8 +526,9 @@
 
         // Format relative time
         function formatRelativeTime(timestamp) {
+          if (!timestamp) return 'Unknown time';
           const now = new Date();
-          const date = new Date(timestamp);
+          const date = timestamp.toDate();
           const diff = (now - date) / 1000; // seconds
           if (diff < 60) return `${Math.floor(diff)} seconds ago`;
           if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
@@ -447,7 +537,8 @@
 
         // Format message time
         function formatTime(timestamp) {
-          return new Date(timestamp).toLocaleTimeString();
+          if (!timestamp) return 'Unknown time';
+          return timestamp.toDate().toLocaleTimeString();
         }
 
         // Force refresh
@@ -465,79 +556,44 @@
                 '    - status: "ONLINE" | "OFFLINE"\n' +
                 '    - latitude: number\n' +
                 '    - longitude: number\n' +
-                '    - lastSeen: string (ISO timestamp)\n' +
-                '    - Subcollection: messages\n' +
-                '      - Document: {messageId}\n' +
-                '        - sender: string\n' +
-                '        - text: string\n' +
-                '        - timestamp: string\n' +
-                '        - recipient: string');
+                '    - lastSeen: timestamp\n' +
+                '- Collection: messages\n' +
+                '  - Document: {id}\n' +
+                '    - sender: object\n' +
+                '    - senderId: string\n' +
+                '    - text: string\n' +
+                '    - timestamp: timestamp\n' +
+                '    - recipientId: string\n' +
+                '    - participants: array<string>');
         }
 
         return {
           user,
           status,
-          currentUserId,
+          currentUser,
           userLocation,
           lastLocationUpdate,
           nearbyUsers,
-          loadingNearby,
+          loadingNearbyUsers,
           errorMessage,
+          userError,
           selectedUser,
           messages,
-          messageInput,
+          messageValue,
           firebaseInitialized,
+          beepEnabled,
           toggleStatus,
           changeName,
           selectUser,
           sendMessage,
+          toggleBeep,
           formatRelativeTime,
           formatTime,
           forceRefresh,
           showDBStructure
         };
       }
-    }).mount('#app');
-      
-      // Web Audio API setup
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-// Function to play a beep sound
-function playBeep(frequency = 440, duration = 0.1) {
-  const oscillator = audioContext.createOscillator();
-  oscillator.type = 'sine';
-  oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
-  oscillator.connect(audioContext.destination);
-  oscillator.start();
-  oscillator.stop(audioContext.currentTime + duration);
-}
-
-// Function to handle proximity alerts
-function checkProximityAndBeep(nearbyUsers, previousDistances = {}) {
-  nearbyUsers.forEach(user => {
-    if (user.distance < 30) { // Check if user is within 30 meters
-      let interval = 1000; // Default interval (1 second)
-      
-      // Calculate movement (if previous distance exists)
-      if (previousDistances[user.id]) {
-        const distanceChange = previousDistances[user.id] - user.distance;
-        if (distanceChange > 0) { // User is moving closer
-          interval = Math.max(100, 1000 - distanceChange * 50); // Increase frequency
-        }
-      }
-      
-      // Play beep with adjusted interval
-      playBeep();
-      setTimeout(() => checkProximityAndBeep(nearbyUsers, { ...previousDistances, [user.id]: user.distance }), interval);
-    }
-  });
-}
-
-// Example integration in your app (assuming nearbyUsers is available)
-setInterval(() => {
-  checkProximityAndBeep(app.nearbyUsers); // Replace 'app.nearbyUsers' with your data source
-}, 1000);
-      
+    }).mount('#app')
   </script>
 </body>
 </html>
