@@ -420,20 +420,44 @@
         }
 
         // Send message
-        async function sendMessage() {
-          if (!messageInput.value || !selectedUser.value.id) return;
-          try {
-            await db.collection('users').doc(currentUserId.value).collection('messages').add({
-              sender: user.value,
-              text: messageInput.value,
-              timestamp: new Date().toISOString(),
-              recipient: selectedUser.value.id
-            });
-            messageInput.value = '';
-          } catch (error) {
-            errorMessage.value = 'Failed to send message: ' + error.message;
-          }
-        }
+     import { getAuth } from 'firebase/auth';
+import { getFirestore, collection, addDoc } from 'firebase/firestore';
+
+// Assuming db is initialized as getFirestore()
+const db = getFirestore();
+
+async function sendMessage() {
+  const auth = getAuth();
+  if (!auth.currentUser) {
+    errorMessage.value = 'You must be logged in to send a message';
+    console.error('No authenticated user');
+    return;
+  }
+  if (!messageInput.value || !selectedUser.value.id) {
+    errorMessage.value = 'Message or recipient not selected';
+    return;
+  }
+  try {
+    const message = {
+      senderId: auth.currentUser.uid, // Use auth UID directly
+      sender: user.value, // Keep if needed for display (e.g., username)
+      text: messageInput.value,
+      timestamp: new Date().toISOString(),
+      recipient: selectedUser.value.id,
+      participants: [auth.currentUser.uid, selectedUser.value.id] // For potential read access
+    };
+    console.log('Sending message:', message);
+    // Write to the user's messages subcollection
+    await addDoc(
+      collection(db, 'users', auth.currentUser.uid, 'messages'),
+      message
+    );
+    messageInput.value = '';
+  } catch (error) {
+    console.error('Error sending message:', error.code, error.message);
+    errorMessage.value = 'Failed to send message: ' + error.message;
+  }
+}
 
         // Format relative time
         function formatRelativeTime(timestamp) {
