@@ -208,7 +208,7 @@
           <strong>{{ msg.sender }}:</strong> {{ msg.text }} <span>{{ formatTime(msg.timestamp) }}</span>
         </div>
       </div>
-      <input v-model="messageInput" placeholder="Type a message..." @keyup.enter="sendMessage">
+      <input v-model="messageInput" placeholder="Type a message...">
       <button @click="sendMessage">Send</button>
     </div>
 
@@ -344,33 +344,6 @@
           }
         }
 
-        // Listen for incoming messages
-        function setupMessageListener() {
-          if (!currentUserId.value) return;
-          
-          // Listen for messages where current user is recipient
-          db.collectionGroup('messages')
-            .where('recipient', '==', currentUserId.value)
-            .orderBy('timestamp', 'desc')
-            .limit(20)
-            .onSnapshot((snapshot) => {
-              snapshot.docChanges().forEach((change) => {
-                if (change.type === 'added') {
-                  const msg = change.doc.data();
-                  // Only add if it's for the currently selected user
-                  if (selectedUser.value.id === msg.senderId) {
-                    messages.value.unshift({
-                      id: change.doc.id,
-                      sender: msg.sender,
-                      text: msg.text,
-                      timestamp: msg.timestamp
-                    });
-                  }
-                }
-              });
-            });
-        }
-
         // Authentication state
         onMounted(() => {
           initAudio();
@@ -379,7 +352,6 @@
               currentUserId.value = userData.uid;
               user.value = userData.displayName || 'Anonymous';
               getUserLocation();
-              setupMessageListener(); // Add message listener on auth
             } else {
               errorMessage.value = 'Please sign in';
               signIn();
@@ -528,21 +500,6 @@
         function selectUser(user) {
           selectedUser.value = user;
           messages.value = []; // Reset messages for new chat
-          
-          // Load existing messages
-          db.collection('users')
-            .doc(currentUserId.value)
-            .collection('messages')
-            .where('recipient', '==', user.id)
-            .orderBy('timestamp', 'desc')
-            .limit(20)
-            .get()
-            .then((snapshot) => {
-              messages.value = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
-              }));
-            });
         }
 
         // Calculate distance between two coordinates (in meters)
@@ -593,32 +550,13 @@
         // Send message
         async function sendMessage() {
           if (!messageInput.value || !selectedUser.value.id) return;
-          
           try {
-            // Add to sender's outgoing messages
-            await db.collection('users')
-              .doc(currentUserId.value)
-              .collection('messages')
-              .add({
-                sender: user.value,
-                senderId: currentUserId.value,
-                text: messageInput.value,
-                timestamp: new Date().toISOString(),
-                recipient: selectedUser.value.id
-              });
-            
-            // Also add to recipient's inbox
-            await db.collection('users')
-              .doc(selectedUser.value.id)
-              .collection('messages')
-              .add({
-                sender: user.value,
-                senderId: currentUserId.value,
-                text: messageInput.value,
-                timestamp: new Date().toISOString(),
-                recipient: selectedUser.value.id
-              });
-            
+            await db.collection('users').doc(currentUserId.value).collection('messages').add({
+              sender: user.value,
+              text: messageInput.value,
+              timestamp: new Date().toISOString(),
+              recipient: selectedUser.value.id
+            });
             messageInput.value = '';
           } catch (error) {
             errorMessage.value = 'Failed to send message: ' + error.message;
@@ -659,7 +597,6 @@
                 '    - Subcollection: messages\n' +
                 '      - Document: {messageId}\n' +
                 '        - sender: string\n' +
-                '        - senderId: string\n' +
                 '        - text: string\n' +
                 '        - timestamp: string\n' +
                 '        - recipient: string');
