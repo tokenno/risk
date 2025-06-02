@@ -309,40 +309,84 @@
           updateMapLocation(newLocation);
         }, { immediate: true });
 
-        function initAudio() {
-          if (!audioContext) {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-          }
-        }
+       // Initialize audio context
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    }
 
-        function playBeep() {
-          if (!audioContext || !soundEnabled.value) return;
-          
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.type = 'sine';
-          oscillator.frequency.value = 800;
-          gainNode.gain.value = 0.1;
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.start();
-          oscillator.stop(audioContext.currentTime + 0.1);
-        }
+    // Play beep sound
+    function playBeep() {
+      if (!audioContext || !soundEnabled.value) return;
+      
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.type = 'sine';
+      oscillator.frequency.value = 800;
+      gainNode.gain.value = 0.1;
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.1);
+    }
 
-        function updateBeepInterval() {
-          if (beepInterval) clearInterval(beepInterval);
-          
-          if (closestDistance <= 20 && soundEnabled.value) {
-            const bpm = 20 + (20 - Math.min(20, closestDistance)) * (130 / 20);
-            const interval = 60000 / bpm;
-            
-            playBeep();
-            beepInterval = setInterval(playBeep, interval);
-          }
+    // Update beep interval based on distance (60BPM at 20m -> 150BPM at 5m)
+    function updateBeepInterval() {
+      if (beepInterval) {
+        clearInterval(beepInterval);
+        beepInterval = null;
+      }
+      
+      if (closestDistance <= 20 && soundEnabled.value && status.value === 'ONLINE') {
+        // Linear mapping from distance to BPM (20m=60BPM, 5m=150BPM)
+        const bpm = 60 + ((20 - Math.min(20, Math.max(5, closestDistance))) * (90 / 15));
+        const interval = 60000 / bpm;
+        
+        playBeep(); // Play immediately
+        beepInterval = setInterval(playBeep, interval);
+      }
+    }
+
+    // [Previous watch(nearbyUsers) function gets replaced with this:]
+    watch(nearbyUsers, (newUsers) => {
+      if (map) {
+        nearbyMarkers.forEach(marker => map.removeLayer(marker));
+        nearbyMarkers = newUsers.map((user, index) => {
+          const color = colors[index % colors.length];
+          return L.marker([user.latitude, user.longitude], {
+            icon: L.divIcon({
+              html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
+        });
+      }
+      
+      // Find closest user within 20m for beep sound (excluding selected user)
+      closestDistance = Infinity;
+      newUsers.forEach(user => {
+        if (user.id !== selectedUser.value?.id && user.distance < 20) {
+          closestDistance = Math.min(closestDistance, user.distance);
         }
+      });
+      
+      updateBeepInterval();
+    });
+
+    // [Add this new watcher to handle online status changes]
+    watch(status, (newStatus) => {
+      if (newStatus === 'OFFLINE' && beepInterval) {
+        clearInterval(beepInterval);
+        beepInterval = null;
+      } else if (newStatus === 'ONLINE') {
+        updateBeepInterval();
+      }
+    });
 
         function toggleSound() {
           soundEnabled.value = !soundEnabled.value;
