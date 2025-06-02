@@ -74,6 +74,7 @@
       border-bottom: 1px solid #444;
       transition: background 0.2s;
       color: #e0e0e0;
+      cursor: pointer;
     }
     .user-list div:hover {
       background: #3a3a3a;
@@ -187,6 +188,12 @@
       <div>User ID: {{ currentUserId || 'Not set' }}</div>
       <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
       <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+      <div v-if="activeSoundProfiles.length > 0">
+        Active sounds: 
+        <span v-for="profile in activeSoundProfiles" :key="profile.id">
+          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz, {{ profile.bpm.toFixed(0) }}BPM)
+        </span>
+      </div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
   </div>
@@ -224,16 +231,95 @@
         const clearingStaleLocations = ref(false);
         const mapInitialized = ref(false);
         const selectedUser = ref(null);
+        const activeSoundProfiles = ref([]);
         
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
         let selectedUserMarker = null;
         let audioContext = null;
-        let beepInterval = null;
-        let closestDistance = Infinity;
+        const userBeepIntervals = new Map();
+        const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
 
+        // Initialize audio context
+        function initAudio() {
+          if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          }
+        }
+
+        // Generate unique sound profile for each user
+        function generateSoundProfile(userId, userName) {
+          if (!userSoundProfiles.has(userId)) {
+            userSoundProfiles.set(userId, {
+              id: userId,
+              name: userName,
+              frequency: 300 + Math.random() * 700, // 300-1000 Hz
+              bpm: 60 + Math.random() * 100 // 60-160 BPM
+            });
+          }
+          return userSoundProfiles.get(userId);
+        }
+
+        // Play beep with custom frequency
+        function playBeep(frequency = 800) {
+          if (!audioContext || !soundEnabled.value) return;
+          
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.type = 'sine';
+          oscillator.frequency.value = frequency;
+          gainNode.gain.value = 0.1;
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.start();
+          oscillator.stop(audioContext.currentTime + 0.1);
+        }
+
+        // Update beeps for all users within 5m
+        function updateUserBeeps() {
+          // Clear all existing intervals
+          userBeepIntervals.forEach((interval, userId) => {
+            clearInterval(interval);
+            userBeepIntervals.delete(userId);
+          });
+          activeSoundProfiles.value = [];
+
+          // Create new intervals for users within 5m (excluding selected user)
+          nearbyUsers.value.forEach(user => {
+            if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
+              const profile = generateSoundProfile(user.id, user.name);
+              const interval = 60000 / profile.bpm; // Convert BPM to ms
+              
+              // Play immediately and set interval
+              playBeep(profile.frequency);
+              const intervalId = setInterval(() => {
+                playBeep(profile.frequency);
+              }, interval);
+              
+              userBeepIntervals.set(user.id, intervalId);
+              activeSoundProfiles.value.push(profile);
+            }
+          });
+        }
+
+        // Toggle sound on/off
+        function toggleSound() {
+          soundEnabled.value = !soundEnabled.value;
+          if (!soundEnabled.value) {
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          } else {
+            updateUserBeeps();
+          }
+        }
+
+        // [Rest of your existing functions remain exactly the same...]
         function initMap(location) {
           try {
             nextTick(() => {
@@ -291,6 +377,7 @@
             
             map.setView([user.latitude, user.longitude], 13);
           }
+          updateUserBeeps();
         }
 
         function focusOnMyLocation() {
@@ -302,6 +389,7 @@
               selectedUserMarker = null;
             }
           }
+          updateUserBeeps();
         }
 
         watch(userLocation, (newLocation) => {
@@ -309,119 +397,30 @@
           updateMapLocation(newLocation);
         }, { immediate: true });
 
-       // Initialize audio context
-    function initAudio() {
-      if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      }
-    }
-
-    // Play beep sound
-    function playBeep() {
-      if (!audioContext || !soundEnabled.value) return;
-      
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      
-      oscillator.type = 'sine';
-      oscillator.frequency.value = 800;
-      gainNode.gain.value = 0.1;
-      
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.1);
-    }
-
-    // Update beep interval based on distance (60BPM at 20m -> 150BPM at 5m)
-    function updateBeepInterval() {
-      if (beepInterval) {
-        clearInterval(beepInterval);
-        beepInterval = null;
-      }
-      
-      if (closestDistance <= 20 && soundEnabled.value && status.value === 'ONLINE') {
-        // Linear mapping from distance to BPM (20m=60BPM, 5m=150BPM)
-        const bpm = 60 + ((20 - Math.min(20, Math.max(5, closestDistance))) * (90 / 15));
-        const interval = 60000 / bpm;
-        
-        playBeep(); // Play immediately
-        beepInterval = setInterval(playBeep, interval);
-      }
-    }
-
-    // [Previous watch(nearbyUsers) function gets replaced with this:]
-    watch(nearbyUsers, (newUsers) => {
-      if (map) {
-        nearbyMarkers.forEach(marker => map.removeLayer(marker));
-        nearbyMarkers = newUsers.map((user, index) => {
-          const color = colors[index % colors.length];
-          return L.marker([user.latitude, user.longitude], {
-            icon: L.divIcon({
-              html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-              className: 'user-marker',
-              iconSize: [20, 20]
-            })
-          }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-        });
-      }
-      
-      // Find closest user within 20m for beep sound (excluding selected user)
-      closestDistance = Infinity;
-      newUsers.forEach(user => {
-        if (user.id !== selectedUser.value?.id && user.distance < 20) {
-          closestDistance = Math.min(closestDistance, user.distance);
-        }
-      });
-      
-      updateBeepInterval();
-    });
-
-    // [Add this new watcher to handle online status changes]
-    watch(status, (newStatus) => {
-      if (newStatus === 'OFFLINE' && beepInterval) {
-        clearInterval(beepInterval);
-        beepInterval = null;
-      } else if (newStatus === 'ONLINE') {
-        updateBeepInterval();
-      }
-    });
-
-        function toggleSound() {
-          soundEnabled.value = !soundEnabled.value;
-          if (!soundEnabled.value && beepInterval) {
-            clearInterval(beepInterval);
-            beepInterval = null;
-          }
-        }
-
-        async function clearStaleLocations() {
-          if (clearingStaleLocations.value) return;
-          
-          clearingStaleLocations.value = true;
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          
-          try {
-            const query = db.collection('users')
-              .where('lastSeen', '<', fiveMinutesAgo);
-            
-            const snapshot = await query.get();
-            const batch = db.batch();
-            
-            snapshot.forEach(doc => {
-              batch.delete(doc.ref);
+        watch(nearbyUsers, (newUsers) => {
+          if (map) {
+            nearbyMarkers.forEach(marker => map.removeLayer(marker));
+            nearbyMarkers = newUsers.map((user, index) => {
+              const color = colors[index % colors.length];
+              return L.marker([user.latitude, user.longitude], {
+                icon: L.divIcon({
+                  html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+                  className: 'user-marker',
+                  iconSize: [20, 20]
+                })
+              }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
             });
-            
-            await batch.commit();
-            errorMessage.value = `Cleared ${snapshot.size} stale locations`;
-            fetchNearbyUsers();
-          } catch (error) {
-            errorMessage.value = 'Failed to clear stale locations: ' + error.message;
-          } finally {
-            clearingStaleLocations.value = false;
           }
-        }
+          updateUserBeeps();
+        });
+
+        watch(status, (newStatus) => {
+          if (newStatus === 'OFFLINE') {
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          }
+        });
 
         onMounted(() => {
           initAudio();
@@ -437,32 +436,6 @@
           });
         });
 
-        watch(nearbyUsers, (newUsers) => {
-      if (map) {
-        nearbyMarkers.forEach(marker => map.removeLayer(marker));
-        nearbyMarkers = newUsers.map((user, index) => {
-          const color = colors[index % colors.length];
-          return L.marker([user.latitude, user.longitude], {
-            icon: L.divIcon({
-              html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-              className: 'user-marker',
-              iconSize: [20, 20]
-            })
-          }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-        });
-      }
-      
-      // Find closest user within 20m for beep sound (EXCLUDING SELECTED USER)
-      closestDistance = Infinity;
-      newUsers.forEach(user => {
-        if (user.id !== selectedUser.value?.id && user.distance < 20 && user.distance < closestDistance) {
-          closestDistance = user.distance;
-        }
-      });
-      
-      updateBeepInterval();
-    });
-            
         async function signIn() {
           const provider = new firebase.auth.GoogleAuthProvider();
           try {
@@ -519,10 +492,6 @@
             fetchNearbyUsers();
           } else {
             nearbyUsers.value = [];
-            if (beepInterval) {
-              clearInterval(beepInterval);
-              beepInterval = null;
-            }
           }
         }
 
@@ -599,6 +568,33 @@
           if (status.value === 'ONLINE') fetchNearbyUsers();
         }
 
+        async function clearStaleLocations() {
+          if (clearingStaleLocations.value) return;
+          
+          clearingStaleLocations.value = true;
+          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+          
+          try {
+            const query = db.collection('users')
+              .where('lastSeen', '<', fiveMinutesAgo);
+            
+            const snapshot = await query.get();
+            const batch = db.batch();
+            
+            snapshot.forEach(doc => {
+              batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+            errorMessage.value = `Cleared ${snapshot.size} stale locations`;
+            fetchNearbyUsers();
+          } catch (error) {
+            errorMessage.value = 'Failed to clear stale locations: ' + error.message;
+          } finally {
+            clearingStaleLocations.value = false;
+          }
+        }
+
         return {
           user,
           status,
@@ -613,6 +609,7 @@
           clearingStaleLocations,
           mapInitialized,
           selectedUser,
+          activeSoundProfiles,
           toggleStatus,
           changeName,
           toggleSound,
