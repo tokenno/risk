@@ -58,6 +58,12 @@
     button.warning:hover {
       background: #c82333;
     }
+    button.secondary {
+      background: #6c757d;
+    }
+    button.secondary:hover {
+      background: #5a6268;
+    }
     .error {
       color: #ff4d4d;
       font-size: 0.8em;
@@ -68,6 +74,13 @@
       border-bottom: 1px solid #444;
       transition: background 0.2s;
       color: #e0e0e0;
+    }
+    .user-list div:hover {
+      background: #3a3a3a;
+    }
+    .user-list div.selected {
+      background: #3a3a3a;
+      border-left: 3px solid #28a745;
     }
     .user-list div:last-child {
       border-bottom: none;
@@ -87,11 +100,16 @@
       height: 100%;
       color: #888;
     }
+    .map-controls {
+      margin-top: 8px;
+      display: flex;
+      gap: 8px;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 8px;
       }
-      button {
+      button, input {
         width: 100%;
         margin: 4px 0;
       }
@@ -136,6 +154,11 @@
             Loading map...
           </div>
         </div>
+        <div class="map-controls" v-if="mapInitialized">
+          <button class="secondary" @click="focusOnMyLocation" :disabled="!selectedUser">
+            Focus on Me
+          </button>
+        </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
       <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
@@ -146,7 +169,11 @@
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.length === 0">No users nearby</div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-for="user in nearbyUsers" :key="user.id" class="user-list">
+      <div v-for="user in nearbyUsers" 
+           :key="user.id" 
+           class="user-list"
+           :class="{ selected: selectedUser?.id === user.id }"
+           @click="selectUser(user)">
         <div>{{ user.name }}</div>
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
         <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
@@ -165,10 +192,8 @@
   </div>
 
   <script>
-    // Import Vue
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
 
-    // Firebase configuration
     const firebaseConfig = {
       apiKey: "AIzaSyDC6w15EQdfuBTZHlpvoxmaL5ISEgbFAWY",
       authDomain: "risk-ec382.firebaseapp.com",
@@ -179,7 +204,6 @@
       measurementId: "G-2LKEG2N7ZD"
     };
 
-    // Initialize Firebase
     const app = firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const auth = firebase.auth();
@@ -199,18 +223,19 @@
         const soundEnabled = ref(true);
         const clearingStaleLocations = ref(false);
         const mapInitialized = ref(false);
+        const selectedUser = ref(null);
+        
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
+        let selectedUserMarker = null;
         let audioContext = null;
         let beepInterval = null;
         let closestDistance = Infinity;
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
 
-        // Initialize map
         function initMap(location) {
           try {
-            // Wait for DOM to be ready
             nextTick(() => {
               if (!document.getElementById('map')) {
                 throw new Error('Map container not found');
@@ -237,7 +262,6 @@
           }
         }
 
-        // Update map location
         function updateMapLocation(location) {
           if (map) {
             map.setView(location, 13);
@@ -249,20 +273,48 @@
           }
         }
 
-        // Watch for location changes
+        function selectUser(user) {
+          selectedUser.value = user;
+          
+          if (selectedUserMarker && map) {
+            map.removeLayer(selectedUserMarker);
+          }
+          
+          if (map) {
+            selectedUserMarker = L.marker([user.latitude, user.longitude], {
+              icon: L.divIcon({
+                html: `<div style="background-color: #28a745; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+                className: 'selected-user-marker',
+                iconSize: [20, 20]
+              })
+            }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
+            
+            map.setView([user.latitude, user.longitude], 13);
+          }
+        }
+
+        function focusOnMyLocation() {
+          if (map && userLocation.value) {
+            map.setView(userLocation.value, 13);
+            selectedUser.value = null;
+            if (selectedUserMarker && map) {
+              map.removeLayer(selectedUserMarker);
+              selectedUserMarker = null;
+            }
+          }
+        }
+
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
           updateMapLocation(newLocation);
         }, { immediate: true });
 
-        // Initialize audio context
         function initAudio() {
           if (!audioContext) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
           }
         }
 
-        // Play beep sound
         function playBeep() {
           if (!audioContext || !soundEnabled.value) return;
           
@@ -280,7 +332,6 @@
           oscillator.stop(audioContext.currentTime + 0.1);
         }
 
-        // Update beep interval
         function updateBeepInterval() {
           if (beepInterval) clearInterval(beepInterval);
           
@@ -293,7 +344,6 @@
           }
         }
 
-        // Toggle sound
         function toggleSound() {
           soundEnabled.value = !soundEnabled.value;
           if (!soundEnabled.value && beepInterval) {
@@ -302,7 +352,6 @@
           }
         }
 
-        // Clear stale locations
         async function clearStaleLocations() {
           if (clearingStaleLocations.value) return;
           
@@ -330,7 +379,6 @@
           }
         }
 
-        // Authentication state
         onMounted(() => {
           initAudio();
           auth.onAuthStateChanged((userData) => {
@@ -345,7 +393,6 @@
           });
         });
 
-        // Update nearby users on map
         watch(nearbyUsers, (newUsers) => {
           if (map) {
             nearbyMarkers.forEach(marker => map.removeLayer(marker));
@@ -371,7 +418,6 @@
           updateBeepInterval();
         });
 
-        // Sign in with Google
         async function signIn() {
           const provider = new firebase.auth.GoogleAuthProvider();
           try {
@@ -381,7 +427,6 @@
           }
         }
 
-        // Get user location
         function getUserLocation() {
           if (!navigator.geolocation) {
             errorMessage.value = 'Geolocation is not supported by your browser';
@@ -406,7 +451,6 @@
           );
         }
 
-        // Update user location in Firestore
         async function updateUserLocation() {
           if (currentUserId.value && userLocation.value) {
             try {
@@ -423,7 +467,6 @@
           }
         }
 
-        // Toggle online/offline status
         async function toggleStatus() {
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
@@ -438,7 +481,6 @@
           }
         }
 
-        // Change user name
         async function changeName() {
           const newName = prompt('Enter new name:', user.value);
           if (newName) {
@@ -455,7 +497,6 @@
           }
         }
 
-        // Calculate distance between coordinates
         function calculateDistance(coord1, coord2) {
           const R = 6371e3;
           const lat1 = coord1[0] * Math.PI / 180;
@@ -469,7 +510,6 @@
           return R * c;
         }
 
-        // Fetch nearby users
         function fetchNearbyUsers() {
           if (!userLocation.value) {
             errorMessage.value = 'Location not available';
@@ -500,7 +540,6 @@
           });
         }
 
-        // Format relative time
         function formatRelativeTime(timestamp) {
           const now = new Date();
           const date = new Date(timestamp);
@@ -510,7 +549,6 @@
           return `${Math.floor(diff / 3600)} hours ago`;
         }
 
-        // Force refresh
         function forceRefresh() {
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
@@ -529,10 +567,13 @@
           soundEnabled,
           clearingStaleLocations,
           mapInitialized,
+          selectedUser,
           toggleStatus,
           changeName,
           toggleSound,
           clearStaleLocations,
+          selectUser,
+          focusOnMyLocation,
           formatRelativeTime,
           forceRefresh
         };
