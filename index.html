@@ -66,21 +66,26 @@
     .user-list div {
       padding: 8px;
       border-bottom: 1px solid #444;
-      cursor: pointer;
       transition: background 0.2s;
       color: #e0e0e0;
-    }
-    .user-list div:hover {
-      background: #3a3a3a;
     }
     .user-list div:last-child {
       border-bottom: none;
     }
     #map {
       height: 200px;
+      width: 100%;
       border: 1px solid #555;
       border-radius: 4px;
       margin-top: 8px;
+      background: #1a1a1a;
+    }
+    .map-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #888;
     }
     @media (max-width: 600px) {
       .container {
@@ -126,7 +131,11 @@
       <div v-if="userLocation">
         <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
         <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
-        <div id="map"></div>
+        <div id="map">
+          <div v-if="!mapInitialized" class="map-loading">
+            Loading map...
+          </div>
+        </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
       <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
@@ -157,7 +166,7 @@
 
   <script>
     // Import Vue
-    const { createApp, ref, onMounted, watch } = Vue;
+    const { createApp, ref, onMounted, watch, nextTick } = Vue;
 
     // Firebase configuration
     const firebaseConfig = {
@@ -189,6 +198,7 @@
         const firebaseInitialized = ref(true);
         const soundEnabled = ref(true);
         const clearingStaleLocations = ref(false);
+        const mapInitialized = ref(false);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
@@ -196,6 +206,54 @@
         let beepInterval = null;
         let closestDistance = Infinity;
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+
+        // Initialize map
+        function initMap(location) {
+          try {
+            // Wait for DOM to be ready
+            nextTick(() => {
+              if (!document.getElementById('map')) {
+                throw new Error('Map container not found');
+              }
+              
+              map = L.map('map').setView(location, 13);
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                maxZoom: 18
+              }).addTo(map);
+              
+              userMarker = L.marker(location, {
+                icon: L.divIcon({
+                  html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+                  className: 'user-marker',
+                  iconSize: [20, 20]
+                })
+              }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+              
+              mapInitialized.value = true;
+            });
+          } catch (error) {
+            errorMessage.value = 'Map initialization failed: ' + error.message;
+          }
+        }
+
+        // Update map location
+        function updateMapLocation(location) {
+          if (map) {
+            map.setView(location, 13);
+            if (userMarker) {
+              userMarker.setLatLng(location);
+            }
+          } else {
+            initMap(location);
+          }
+        }
+
+        // Watch for location changes
+        watch(userLocation, (newLocation) => {
+          if (!newLocation) return;
+          updateMapLocation(newLocation);
+        }, { immediate: true });
 
         // Initialize audio context
         function initAudio() {
@@ -222,16 +280,15 @@
           oscillator.stop(audioContext.currentTime + 0.1);
         }
 
-        // Update beep interval based on closest distance (20m-0m maps to 20BPM-150BPM)
+        // Update beep interval
         function updateBeepInterval() {
           if (beepInterval) clearInterval(beepInterval);
           
           if (closestDistance <= 20 && soundEnabled.value) {
-            // Map distance to BPM (20m = 20BPM, 0m = 150BPM)
             const bpm = 20 + (20 - Math.min(20, closestDistance)) * (130 / 20);
-            const interval = 60000 / bpm; // Convert BPM to milliseconds
+            const interval = 60000 / bpm;
             
-            playBeep(); // Play immediately
+            playBeep();
             beepInterval = setInterval(playBeep, interval);
           }
         }
@@ -245,7 +302,7 @@
           }
         }
 
-        // Clear stale locations (users who haven't updated in 5 minutes)
+        // Clear stale locations
         async function clearStaleLocations() {
           if (clearingStaleLocations.value) return;
           
@@ -265,7 +322,7 @@
             
             await batch.commit();
             errorMessage.value = `Cleared ${snapshot.size} stale locations`;
-            fetchNearbyUsers(); // Refresh the list
+            fetchNearbyUsers();
           } catch (error) {
             errorMessage.value = 'Failed to clear stale locations: ' + error.message;
           } finally {
@@ -288,33 +345,7 @@
           });
         });
 
-        // Initialize map when userLocation is set
-        watch(userLocation, (newLocation) => {
-          if (newLocation && !map) {
-            map = L.map('map').setView(newLocation, 13);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-              maxZoom: 18
-            }).addTo(map);
-            
-            // Create red marker for current user with name
-            userMarker = L.marker(newLocation, {
-              icon: L.divIcon({
-                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker',
-                iconSize: [20, 20]
-              })
-            }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
-          }
-          if (map && newLocation) {
-            map.setView(newLocation, 13);
-            if (userMarker) {
-              userMarker.setLatLng(newLocation);
-            }
-          }
-        });
-
-        // Update nearby users on map and check proximity for beep
+        // Update nearby users on map
         watch(nearbyUsers, (newUsers) => {
           if (map) {
             nearbyMarkers.forEach(marker => map.removeLayer(marker));
@@ -330,7 +361,6 @@
             });
           }
           
-          // Find closest user within 20m for beep sound
           closestDistance = Infinity;
           newUsers.forEach(user => {
             if (user.distance < 20 && user.distance < closestDistance) {
@@ -376,7 +406,7 @@
           );
         }
 
-        // Update user location and status in Firestore
+        // Update user location in Firestore
         async function updateUserLocation() {
           if (currentUserId.value && userLocation.value) {
             try {
@@ -425,9 +455,9 @@
           }
         }
 
-        // Calculate distance between two coordinates (in meters)
+        // Calculate distance between coordinates
         function calculateDistance(coord1, coord2) {
-          const R = 6371e3; // Earth's radius in meters
+          const R = 6371e3;
           const lat1 = coord1[0] * Math.PI / 180;
           const lat2 = coord2[0] * Math.PI / 180;
           const deltaLat = (coord2[0] - coord1[0]) * Math.PI / 180;
@@ -462,7 +492,7 @@
                   longitude: data.longitude
                 };
               })
-              .filter(user => user.distance < 10000); // 10km radius
+              .filter(user => user.distance < 10000);
             loadingNearby.value = false;
           }, (error) => {
             errorMessage.value = 'Failed to load nearby users: ' + error.message;
@@ -474,7 +504,7 @@
         function formatRelativeTime(timestamp) {
           const now = new Date();
           const date = new Date(timestamp);
-          const diff = (now - date) / 1000; // seconds
+          const diff = (now - date) / 1000;
           if (diff < 60) return `${Math.floor(diff)} seconds ago`;
           if (diff < 3600) return `${Math.floor(diff / 60)} minutes ago`;
           return `${Math.floor(diff / 3600)} hours ago`;
@@ -498,6 +528,7 @@
           firebaseInitialized,
           soundEnabled,
           clearingStaleLocations,
+          mapInitialized,
           toggleStatus,
           changeName,
           toggleSound,
