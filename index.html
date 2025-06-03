@@ -106,6 +106,13 @@
       display: flex;
       gap: 8px;
     }
+    .audio-permission {
+      background: #444;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 8px;
@@ -125,6 +132,12 @@
 </head>
 <body>
   <div id="app" class="container">
+    <div class="section audio-permission" v-if="showAudioPermission">
+      <h3>Audio Permission Required</h3>
+      <p>Please tap the button below to enable sound notifications for nearby users</p>
+      <button @click="enableAudio">Enable Sound</button>
+    </div>
+
     <div class="section">
       <div v-if="user" class="user-info">
         <span>{{ user.charAt(0).toUpperCase() }}</span>
@@ -140,7 +153,6 @@
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-        <button @click="testSound">Test Sound</button>
       <button class="warning" @click="clearStaleLocations" :disabled="clearingStaleLocations">
         {{ clearingStaleLocations ? 'Clearing...' : 'Clear Stale Locations' }}
       </button>
@@ -157,9 +169,9 @@
           </div>
         </div>
         <div class="map-controls" v-if="mapInitialized">
-        <button class="secondary" @click="focusOnMyLocation">
-  Focus on Me
-</button>
+          <button class="secondary" @click="focusOnMyLocation" :disabled="!selectedUser">
+            Focus on Me
+          </button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -195,6 +207,7 @@
           {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz, {{ profile.bpm.toFixed(0) }}BPM)
         </span>
       </div>
+      <div>Audio State: {{ audioState }}</div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
   </div>
@@ -233,6 +246,8 @@
         const mapInitialized = ref(false);
         const selectedUser = ref(null);
         const activeSoundProfiles = ref([]);
+        const showAudioPermission = ref(false);
+        const audioState = ref('Not initialized');
         
         let map = null;
         let userMarker = null;
@@ -242,63 +257,110 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
-          
-          function testSound() {
-  initAudio();
-  playBeep(440); // Standard A4 tone
-}
 
-// Add to your return statement:
-return {
-  // ... existing properties ...
-  testSound
-};
+        // Initialize audio context
+        function initAudio() {
+          if (!audioContext) {
+            try {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              audioState.value = 'Initialized (suspended)';
+              
+              // On mobile, we need to show the permission button
+              if (/Mobi|Android/i.test(navigator.userAgent)) {
+                showAudioPermission.value = true;
+              } else {
+                // On desktop, try to resume immediately
+                resumeAudioContext();
+              }
+            } catch (error) {
+              console.error('AudioContext error:', error);
+              errorMessage.value = 'Audio initialization failed. Try refreshing the page.';
+              audioState.value = 'Initialization failed';
+            }
+          }
+        }
 
-    function initAudio() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    
-    // Resume audio context on first user interaction
-    const resumeAudio = () => {
-      if (audioContext.state === 'suspended') {
-        audioContext.resume();
-      }
-      document.removeEventListener('click', resumeAudio);
-    };
-    
-    document.addEventListener('click', resumeAudio);
-  }
-}
+        // Resume audio context
+        function resumeAudioContext() {
+          if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+              console.log('AudioContext resumed successfully');
+              audioState.value = 'Running';
+              showAudioPermission.value = false;
+              if (soundEnabled.value) {
+                updateUserBeeps();
+              }
+            }).catch(error => {
+              console.error('Failed to resume AudioContext:', error);
+              audioState.value = 'Resume failed';
+            });
+          }
+        }
+
+        // Enable audio via user interaction
+        function enableAudio() {
+          resumeAudioContext();
+          // Play a silent sound to unlock audio on iOS
+          const buffer = audioContext.createBuffer(1, 1, 22050);
+          const source = audioContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContext.destination);
+          source.start(0);
+          source.stop(audioContext.currentTime + 0.1);
+        }
 
         // Generate unique sound profile for each user
         function generateSoundProfile(userId, userName) {
           if (!userSoundProfiles.has(userId)) {
+            const nameHash = userName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             userSoundProfiles.set(userId, {
               id: userId,
               name: userName,
-              frequency: 300 + Math.random() * 700, // 300-1000 Hz
-              bpm: 60 + Math.random() * 100 // 60-160 BPM
+              frequency: 300 + (nameHash % 700), // 300-1000 Hz based on name
+              bpm: 60 + (nameHash % 100), // 60-160 BPM based on name
+              waveType: ['sine', 'square', 'sawtooth', 'triangle'][nameHash % 4],
+              pan: (nameHash % 200 - 100) / 100 // -1 to 1 based on name
             });
           }
           return userSoundProfiles.get(userId);
         }
 
-        // Play beep with custom frequency
-        function playBeep(frequency = 800) {
-          if (!audioContext || !soundEnabled.value) return;
+        // Play beep with custom frequency and distance-based effects
+        function playBeep(profile, distance) {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
           
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.type = 'sine';
-          oscillator.frequency.value = frequency;
-          gainNode.gain.value = 0.1;
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.start();
-          oscillator.stop(audioContext.currentTime + 0.1);
+          try {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const panner = audioContext.createStereoPanner();
+            
+            oscillator.type = profile.waveType;
+            oscillator.frequency.value = profile.frequency;
+            
+            // Distance-based volume (quieter when farther)
+            const baseVolume = 0.15;
+            const distanceVolume = Math.max(0.01, baseVolume * (1 - Math.min(1, distance / 10)));
+            
+            // ADSR envelope
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.02); // Attack
+            gainNode.gain.linearRampToValueAtTime(distanceVolume * 0.7, now + 0.05); // Decay
+            gainNode.gain.setValueAtTime(distanceVolume * 0.7, now + 0.08); // Sustain
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.1); // Release
+            
+            // Panning based on user profile
+            panner.pan.value = profile.pan;
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(panner);
+            panner.connect(audioContext.destination);
+            
+            oscillator.start();
+            oscillator.stop(now + 0.1);
+          } catch (error) {
+            console.error('Audio playback error:', error);
+          }
         }
 
         // Update beeps for all users within 5m
@@ -310,6 +372,9 @@ return {
           });
           activeSoundProfiles.value = [];
 
+          // Don't proceed if audio isn't enabled or context isn't running
+          if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') return;
+
           // Create new intervals for users within 5m (excluding selected user)
           nearbyUsers.value.forEach(user => {
             if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
@@ -317,9 +382,9 @@ return {
               const interval = 60000 / profile.bpm; // Convert BPM to ms
               
               // Play immediately and set interval
-              playBeep(profile.frequency);
+              playBeep(profile, user.distance);
               const intervalId = setInterval(() => {
-                playBeep(profile.frequency);
+                playBeep(profile, user.distance);
               }, interval);
               
               userBeepIntervals.set(user.id, intervalId);
@@ -328,53 +393,25 @@ return {
           });
         }
 
-     function toggleSound() {
-  initAudio(); // Ensure audio context exists
-  soundEnabled.value = !soundEnabled.value;
-  
-  if (!soundEnabled.value) {
-    // Clear all intervals when sound is off
-    userBeepIntervals.forEach(interval => clearInterval(interval));
-    userBeepIntervals.clear();
-    activeSoundProfiles.value = [];
-  } else {
-    // Play test sound when enabling
-    playBeep(440); // Standard A4 tone
-    updateUserBeeps();
-  }
-}
-function playBeep(frequency = 800) {
-  if (!audioContext) {
-    console.error('AudioContext not initialized');
-    return;
-  }
-  
-  if (!soundEnabled.value) {
-    console.log('Sound disabled');
-    return;
-  }
-  
-  console.log(`Playing beep at ${frequency}Hz`);
-  
-  try {
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.value = frequency;
-    gainNode.gain.value = 0.1;
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
-  } catch (error) {
-    console.error('Audio playback error:', error);
-  }
-}
+        // Toggle sound on/off
+        function toggleSound() {
+          soundEnabled.value = !soundEnabled.value;
+          if (!soundEnabled.value) {
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          } else {
+            // Resume audio context if needed
+            if (audioContext && audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                updateUserBeeps();
+              });
+            } else if (audioContext && audioContext.state === 'running') {
+              updateUserBeeps();
+            }
+          }
+        }
 
-        // [Rest of your existing functions remain exactly the same...]
         function initMap(location) {
           try {
             nextTick(() => {
@@ -435,24 +472,17 @@ function playBeep(frequency = 800) {
           updateUserBeeps();
         }
 
-  function focusOnMyLocation() {
-  if (map && userLocation.value) {
-    map.setView(userLocation.value, 13);
-    selectedUser.value = null;
-    
-    // Clear selected user marker if it exists
-    if (selectedUserMarker) {
-      map.removeLayer(selectedUserMarker);
-      selectedUserMarker = null;
-    }
-    
-    // Ensure user marker is visible and on top
-    if (userMarker) {
-      userMarker.addTo(map).bringToFront();
-    }
-  }
-  updateUserBeeps();
-}
+        function focusOnMyLocation() {
+          if (map && userLocation.value) {
+            map.setView(userLocation.value, 13);
+            selectedUser.value = null;
+            if (selectedUserMarker && map) {
+              map.removeLayer(selectedUserMarker);
+              selectedUserMarker = null;
+            }
+          }
+          updateUserBeeps();
+        }
 
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
@@ -672,6 +702,8 @@ function playBeep(frequency = 800) {
           mapInitialized,
           selectedUser,
           activeSoundProfiles,
+          showAudioPermission,
+          audioState,
           toggleStatus,
           changeName,
           toggleSound,
@@ -679,7 +711,8 @@ function playBeep(frequency = 800) {
           selectUser,
           focusOnMyLocation,
           formatRelativeTime,
-          forceRefresh
+          forceRefresh,
+          enableAudio
         };
       }
     }).mount('#app');
