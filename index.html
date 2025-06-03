@@ -324,38 +324,43 @@
         }
 
         // Play beep with custom frequency and distance-based effects
-       function playBeep(profile, distance) {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
-  
-  try {
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    const panner = audioContext.createStereoPanner();
-    
-    oscillator.type = profile.waveType;
-    oscillator.frequency.value = profile.frequency;
-    
-    // Longer duration for Android (300ms instead of 100ms)
-    const now = audioContext.currentTime;
-    const duration = 0.3;
-    
-    // Smoother envelope for Android
-    gainNode.gain.setValueAtTime(0, now);
-    gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.05);
-    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
-    
-    panner.pan.value = profile.pan;
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(panner);
-    panner.connect(audioContext.destination);
-    
-    oscillator.start(now);
-    oscillator.stop(now + duration);
-  } catch (error) {
-    console.error('Audio playback error:', error);
-  }
-}
+        function playBeep(profile, distance) {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+          
+          try {
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            const panner = audioContext.createStereoPanner();
+            
+            oscillator.type = profile.waveType;
+            oscillator.frequency.value = profile.frequency;
+            
+            // Distance-based volume (quieter when farther)
+            const baseVolume = 0.15;
+            const distanceVolume = Math.max(0.01, baseVolume * (1 - Math.min(1, distance / 10)));
+            
+            // ADSR envelope
+            const now = audioContext.currentTime;
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(distanceVolume, now + 0.02); // Attack
+            gainNode.gain.linearRampToValueAtTime(distanceVolume * 0.7, now + 0.05); // Decay
+            gainNode.gain.setValueAtTime(distanceVolume * 0.7, now + 0.08); // Sustain
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.1); // Release
+            
+            // Panning based on user profile
+            panner.pan.value = profile.pan;
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(panner);
+            panner.connect(audioContext.destination);
+            
+            oscillator.start();
+            oscillator.stop(now + 0.1);
+          } catch (error) {
+            console.error('Audio playback error:', error);
+          }
+        }
+
         // Update beeps for all users within 5m
         function updateUserBeeps() {
           // Clear all existing intervals
@@ -386,28 +391,24 @@
           });
         }
 
-function toggleSound() {
-  soundEnabled.value = !soundEnabled.value;
-  
-  if (soundEnabled.value) {
-    // Ensure audio context is properly resumed
-    if (audioContext && audioContext.state === 'suspended') {
-      audioContext.resume().then(() => {
-        updateUserBeeps();
-      }).catch(error => {
-        console.error('Audio resume failed:', error);
-        showAudioPermission.value = true;
-      });
-    } else {
-      updateUserBeeps();
-    }
-  } else {
-    // Clear all intervals when sound is off
-    userBeepIntervals.forEach(interval => clearInterval(interval));
-    userBeepIntervals.clear();
-    activeSoundProfiles.value = [];
-  }
-}
+        // Toggle sound on/off
+        function toggleSound() {
+          soundEnabled.value = !soundEnabled.value;
+          if (!soundEnabled.value) {
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          } else {
+            // Resume audio context if needed
+            if (audioContext && audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                updateUserBeeps();
+              });
+            } else if (audioContext && audioContext.state === 'running') {
+              updateUserBeeps();
+            }
+          }
+        }
 
         function initMap(location) {
           try {
