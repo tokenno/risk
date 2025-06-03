@@ -356,6 +356,7 @@
 
         // Toggle sound on/off
         function toggleSound() {
+          resumeAudioContext();
           soundEnabled.value = !soundEnabled.value;
           if (!soundEnabled.value) {
             userBeepIntervals.forEach(interval => clearInterval(interval));
@@ -539,6 +540,7 @@
         }
 
         async function toggleStatus() {
+          resumeAudioContext();
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
           if (status.value === 'ONLINE') {
