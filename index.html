@@ -410,6 +410,16 @@
           }
         }
 
+                setInterval(() => {
+  if (audioContext && audioContext.state === 'suspended') {
+    audioContext.resume().then(() => {
+      audioState.value = 'Running';
+      showAudioPermission.value = false;
+      updateUserBeeps();
+    }).catch(console.error);
+  }
+}, 3000);
+
         function initMap(location) {
           try {
             nextTick(() => {
