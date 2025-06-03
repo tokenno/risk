@@ -194,22 +194,19 @@
 
     <div class="section">
       <h3>Your Location</h3>
-      <div v-if="userLocation">
+      <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
+      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
+      <div v-else>
         <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
         <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
         <div id="map">
-          <div v-if="!mapInitialized" class="map-loading">
-            Loading map...
-          </div>
+          <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
         <div class="map-controls" v-if="mapInitialized">
-          <button class="secondary" @click="focusOnMyLocation">
-            Focus on Me
-          </button>
+          <button class="secondary" @click="focusOnMyLocation">Focus on Me</button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-if="!userLocation && !errorMessage">Acquiring your location...</div>
     </div>
 
     <div class="section">
@@ -300,7 +297,8 @@
           { label: '500km', value: 500000 }
         ]);
         const selectedDistance = ref(1000);
-        
+        const locationStatus = ref('loading');
+
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
@@ -627,24 +625,39 @@
         function getUserLocation() {
           if (!navigator.geolocation) {
             errorMessage.value = 'Geolocation is not supported by your browser';
+            locationStatus.value = 'unavailable';
             return;
           }
+          locationStatus.value = 'loading';
+          const timeoutDuration = 10000; // 10 seconds
+          const geoTimeout = setTimeout(() => {
+            if (!userLocation.value) {
+              locationStatus.value = 'unavailable';
+              errorMessage.value = 'Location not available or waiting to load map';
+            }
+          }, timeoutDuration);
           navigator.geolocation.getCurrentPosition(
             (position) => {
+              clearTimeout(geoTimeout);
               userLocation.value = [position.coords.latitude, position.coords.longitude];
               lastLocationUpdate.value = Date.now();
+              locationStatus.value = 'acquired';
+              errorMessage.value = '';
               updateUserLocation();
               if (status.value === 'ONLINE') fetchNearbyUsers();
             },
             (error) => {
+              clearTimeout(geoTimeout);
+              locationStatus.value = 'unavailable';
               if (error.code === error.PERMISSION_DENIED) {
                 errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
               } else if (error.message.includes('permissions policy')) {
                 errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
               } else {
-                errorMessage.value = 'Failed to acquire location: ' + error.message;
+                errorMessage.value = 'Location not available or waiting to load map';
               }
-            }
+            },
+            { timeout: timeoutDuration, enableHighAccuracy: true }
           );
         }
 
@@ -823,7 +836,8 @@
           formatRelativeTime,
           forceRefresh,
           enableAudio,
-          selectDistance
+          selectDistance,
+          locationStatus
         };
       }
     }).mount('#app');
