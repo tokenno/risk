@@ -106,6 +106,13 @@
       display: flex;
       gap: 8px;
     }
+    .audio-permission {
+      background: #444;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      text-align: center;
+    }
     @media (max-width: 600px) {
       .container {
         padding: 8px;
@@ -125,6 +132,12 @@
 </head>
 <body>
   <div id="app" class="container">
+    <div class="section audio-permission" v-if="showAudioPermission">
+      <h3>Audio Permission Required</h3>
+      <p>Please tap the button below to enable sound notifications for nearby users</p>
+      <button @click="enableAudio">Enable Sound</button>
+    </div>
+
     <div class="section">
       <div v-if="user" class="user-info">
         <span>{{ user.charAt(0).toUpperCase() }}</span>
@@ -194,6 +207,7 @@
           {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz, {{ profile.bpm.toFixed(0) }}BPM)
         </span>
       </div>
+      <div>Audio State: {{ audioState }}</div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
   </div>
@@ -232,7 +246,8 @@
         const mapInitialized = ref(false);
         const selectedUser = ref(null);
         const activeSoundProfiles = ref([]);
-        const audioReady = ref(false);
+        const showAudioPermission = ref(false);
+        const audioState = ref('Not initialized');
         
         let map = null;
         let userMarker = null;
@@ -248,35 +263,50 @@
           if (!audioContext) {
             try {
               audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              // Create a silent buffer to unlock audio on iOS
-              const buffer = audioContext.createBuffer(1, 1, 22050);
-              const source = audioContext.createBufferSource();
-              source.buffer = buffer;
-              source.connect(audioContext.destination);
-              source.start(0);
+              audioState.value = 'Initialized (suspended)';
               
-              // Add click event listener to resume audio context
-              const handleFirstClick = () => {
-                if (audioContext.state === 'suspended') {
-                  audioContext.resume().then(() => {
-                    console.log('AudioContext resumed successfully');
-                    audioReady.value = true;
-                    if (soundEnabled.value) {
-                      updateUserBeeps();
-                    }
-                  }).catch(error => {
-                    console.error('Failed to resume AudioContext:', error);
-                  });
-                }
-                document.removeEventListener('click', handleFirstClick);
-              };
-              
-              document.addEventListener('click', handleFirstClick);
+              // On mobile, we need to show the permission button
+              if (/Mobi|Android/i.test(navigator.userAgent)) {
+                showAudioPermission.value = true;
+              } else {
+                // On desktop, try to resume immediately
+                resumeAudioContext();
+              }
             } catch (error) {
               console.error('AudioContext error:', error);
               errorMessage.value = 'Audio initialization failed. Try refreshing the page.';
+              audioState.value = 'Initialization failed';
             }
           }
+        }
+
+        // Resume audio context
+        function resumeAudioContext() {
+          if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+              console.log('AudioContext resumed successfully');
+              audioState.value = 'Running';
+              showAudioPermission.value = false;
+              if (soundEnabled.value) {
+                updateUserBeeps();
+              }
+            }).catch(error => {
+              console.error('Failed to resume AudioContext:', error);
+              audioState.value = 'Resume failed';
+            });
+          }
+        }
+
+        // Enable audio via user interaction
+        function enableAudio() {
+          resumeAudioContext();
+          // Play a silent sound to unlock audio on iOS
+          const buffer = audioContext.createBuffer(1, 1, 22050);
+          const source = audioContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContext.destination);
+          source.start(0);
+          source.stop(audioContext.currentTime + 0.1);
         }
 
         // Generate unique sound profile for each user
@@ -297,7 +327,7 @@
 
         // Play beep with custom frequency and distance-based effects
         function playBeep(profile, distance) {
-          if (!audioContext || !soundEnabled.value || !audioReady.value || audioContext.state !== 'running') return;
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
           
           try {
             const oscillator = audioContext.createOscillator();
@@ -342,8 +372,8 @@
           });
           activeSoundProfiles.value = [];
 
-          // Don't proceed if audio isn't enabled or context isn't ready
-          if (!soundEnabled.value || !audioReady.value || (audioContext && audioContext.state !== 'running')) return;
+          // Don't proceed if audio isn't enabled or context isn't running
+          if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') return;
 
           // Create new intervals for users within 5m (excluding selected user)
           nearbyUsers.value.forEach(user => {
@@ -374,10 +404,9 @@
             // Resume audio context if needed
             if (audioContext && audioContext.state === 'suspended') {
               audioContext.resume().then(() => {
-                audioReady.value = true;
                 updateUserBeeps();
               });
-            } else if (audioReady.value) {
+            } else if (audioContext && audioContext.state === 'running') {
               updateUserBeeps();
             }
           }
@@ -673,7 +702,8 @@
           mapInitialized,
           selectedUser,
           activeSoundProfiles,
-          audioReady,
+          showAudioPermission,
+          audioState,
           toggleStatus,
           changeName,
           toggleSound,
@@ -681,7 +711,8 @@
           selectUser,
           focusOnMyLocation,
           formatRelativeTime,
-          forceRefresh
+          forceRefresh,
+          enableAudio
         };
       }
     }).mount('#app');
