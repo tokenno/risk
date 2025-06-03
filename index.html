@@ -725,7 +725,7 @@
           return R * c;
         }
 
-      function fetchNearbyUsers() {
+function fetchNearbyUsers() {
   if (!userLocation.value) {
     errorMessage.value = 'Location not available';
     return;
@@ -765,19 +765,6 @@
     loadingNearby.value = false;
   });
 }
-            // Detect new users
-            const newUsers = currentUsers.filter(user => !previousUserIds.has(user.id));
-            if (newUsers.length > 0 && soundEnabled.value) {
-              playNewUserSound();
-            }
-
-            nearbyUsers.value = currentUsers;
-            loadingNearby.value = false;
-          }, (error) => {
-            errorMessage.value = 'Failed to load nearby users: ' + error.message;
-            loadingNearby.value = false;
-          });
-        }
 
         function formatRelativeTime(timestamp) {
           const now = new Date();
