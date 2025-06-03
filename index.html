@@ -360,35 +360,34 @@ function playBeep(profile, distance) {
 }
 
 
-        // Update beeps for all users within 5m
-        function updateUserBeeps() {
-          // Clear all existing intervals
-          userBeepIntervals.forEach((interval, userId) => {
-            clearInterval(interval);
-            userBeepIntervals.delete(userId);
-          });
-          activeSoundProfiles.value = [];
+function updateUserBeeps() {
+  console.log('[updateUserBeeps] Running...');
+  userBeepIntervals.forEach((interval, userId) => {
+    clearInterval(interval);
+    userBeepIntervals.delete(userId);
+  });
+  activeSoundProfiles.value = [];
 
-          // Don't proceed if audio isn't enabled or context isn't running
-          if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') return;
+  if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') {
+    console.warn('[updateUserBeeps] Audio not ready');
+    return;
+  }
 
-          // Create new intervals for users within 5m (excluding selected user)
-          nearbyUsers.value.forEach(user => {
-            if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
-              const profile = generateSoundProfile(user.id, user.name);
-              const interval = 60000 / profile.bpm; // Convert BPM to ms
-              
-              // Play immediately and set interval
-              playBeep(profile, user.distance);
-              const intervalId = setInterval(() => {
-                playBeep(profile, user.distance);
-              }, interval);
-              
-              userBeepIntervals.set(user.id, intervalId);
-              activeSoundProfiles.value.push(profile);
-            }
-          });
-        }
+  nearbyUsers.value.forEach(user => {
+    console.log(`[updateUserBeeps] Checking user: ${user.name}, ${user.distance.toFixed(2)}m away`);
+    if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
+      const profile = generateSoundProfile(user.id, user.name);
+      const interval = 60000 / profile.bpm;
+
+      playBeep(profile, user.distance);
+      const intervalId = setInterval(() => playBeep(profile, user.distance), interval);
+
+      userBeepIntervals.set(user.id, intervalId);
+      activeSoundProfiles.value.push(profile);
+    }
+  });
+}
+
 
         // Toggle sound on/off
         function toggleSound() {
