@@ -323,20 +323,34 @@
           return userSoundProfiles.get(userId);
         }
 
-        // Play beep with custom frequency and distance-based effects
-     function playBeep(profile, distance) {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+function playBeep(profile, distance) {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+    console.warn('playBeep skipped — audio not ready');
+    return;
+  }
 
-  const osc = audioContext.createOscillator();
-  const gain = audioContext.createGain();
+  console.log(`Beep for ${profile.name} @ ${distance.toFixed(2)}m`);
 
-  osc.type = 'sine'; // test with sine wave
-  osc.frequency.value = 440; // standard A4
-  gain.gain.value = 0.3; // loud and clear
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const panner = audioContext.createStereoPanner();
 
-  osc.connect(gain).connect(audioContext.destination);
-  osc.start();
-  osc.stop(audioContext.currentTime + 0.5); // 500ms
+    // Use test-friendly values
+    osc.type = 'sine'; // you can switch to profile.waveType after confirming it's working
+    osc.frequency.value = 440; // or use profile.frequency
+
+    gain.gain.value = 0.25; // louder and consistent
+
+    panner.pan.value = 0; // center for mono/mobile
+
+    osc.connect(gain).connect(panner).connect(audioContext.destination);
+
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5); // longer tone for clarity
+  } catch (error) {
+    console.error('Audio playback error:', error);
+  }
 }
 
 
