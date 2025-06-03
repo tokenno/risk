@@ -152,7 +152,7 @@
     <div class="section">
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
-      <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound ' : '🔕 Sound Off' }}</button>
+      <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
       <button class="warning" @click="clearStaleLocations" :disabled="clearingStaleLocations">
         {{ clearingStaleLocations ? 'Clearing...' : 'Clear Stale Locations' }}
       </button>
