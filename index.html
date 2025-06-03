@@ -307,12 +307,12 @@
           source.stop(audioContext.currentTime + 0.1);
         }
 
-      function generateSoundProfile(userId, userName) {
-  // Always generate a new random profile each run
-  const frequency = Math.floor(Math.random() * (3000 - 300 + 1)) + 300; // 300–3000 Hz
-  const bpm = Math.floor(Math.random() * (160 - 60 + 1)) + 60; // 60–160 BPM
-  const waveType = ['sine', 'square', 'triangle'][Math.floor(Math.random() * 3)];
-  const pan = (Math.random() * 2 - 1).toFixed(2); // -1.0 to 1.0
+function generateSoundProfile(userId, userName) {
+  // Safe range for phone speakers
+  const frequency = Math.floor(Math.random() * (2000 - 400 + 1)) + 400; // 400–2000 Hz
+  const bpm = Math.floor(Math.random() * (120 - 60 + 1)) + 60; // 60–120 BPM
+  const waveType = ['sine', 'triangle'][Math.floor(Math.random() * 2)]; // safest for mobile
+  const pan = parseFloat((Math.random() * 1.5 - 0.75).toFixed(2)); // -0.75 to 0.75
 
   const profile = {
     id: userId,
@@ -320,12 +320,14 @@
     frequency,
     bpm,
     waveType,
-    pan: parseFloat(pan),
+    pan,
   };
 
+  console.log(`[SOUND PROFILE] ${userName} → ${frequency}Hz, ${bpm} BPM, ${waveType}, pan ${pan}`);
   userSoundProfiles.set(userId, profile);
   return profile;
 }
+
 
 function playBeep(profile, distance) {
   if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
