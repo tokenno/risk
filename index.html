@@ -574,14 +574,15 @@ function focusOnMyLocation() {
           });
         });
 
-        async function signIn() {
-          const provider = new firebase.auth.GoogleAuthProvider();
-          try {
-            await auth.signInWithPopup(provider);
-          } catch (error) {
-            errorMessage.value = 'Sign-in failed: ' + error.message;
-          }
-        }
+async function signIn() {
+  try {
+    await auth.signInAnonymously();
+    console.log('Signed in anonymously');
+  } catch (error) {
+    errorMessage.value = 'Anonymous sign-in failed: ' + error.message;
+  }
+}
+
 
         function getUserLocation() {
           if (!navigator.geolocation) {
