@@ -349,7 +349,6 @@
           }
         }
 
-          
         // Enable audio via user interaction
         function enableAudio() {
           resumeAudioContext();
@@ -362,122 +361,120 @@
           source.stop(audioContext.currentTime + 0.1);
         }
 
-function generateSoundProfile(userId, userName) {
-  // Safe range for phone speakers
-  const frequency = Math.floor(Math.random() * (2000 - 400 + 1)) + 400; // 400–2000 Hz
-  const bpm = Math.floor(Math.random() * (120 - 60 + 1)) + 60; // 60–120 BPM
-  const waveType = ['sine', 'triangle'][Math.floor(Math.random() * 2)]; // safest for mobile
-  const pan = parseFloat((Math.random() * 1.5 - 0.75).toFixed(2)); // -0.75 to 0.75
+        function generateSoundProfile(userId, userName) {
+          // Safe range for phone speakers
+          const frequency = Math.floor(Math.random() * (2000 - 400 + 1)) + 400; // 400–2000 Hz
+          const bpm = Math.floor(Math.random() * (120 - 60 + 1)) + 60; // 60–120 BPM
+          const waveType = ['sine', 'triangle'][Math.floor(Math.random() * 2)]; // safest for mobile
+          const pan = parseFloat((Math.random() * 1.5 - 0.75).toFixed(2)); // -0.75 to 0.75
 
-  const profile = {
-    id: userId,
-    name: userName,
-    frequency,
-    bpm,
-    waveType,
-    pan,
-  };
+          const profile = {
+            id: userId,
+            name: userName,
+            frequency,
+            bpm,
+            waveType,
+            pan,
+          };
 
-  console.log(`[SOUND PROFILE] ${userName} → ${frequency}Hz, ${bpm} BPM, ${waveType}, pan ${pan}`);
-  userSoundProfiles.set(userId, profile);
-  return profile;
-}
+          console.log(`[SOUND PROFILE] ${userName} → ${frequency}Hz, ${bpm} BPM, ${waveType}, pan ${pan}`);
+          userSoundProfiles.set(userId, profile);
+          return profile;
+        }
 
+        function playBeep(profile, distance) {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+            console.warn('playBeep skipped — audio not ready');
+            return;
+          }
 
-function playBeep(profile, distance) {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-    console.warn('playBeep skipped — audio not ready');
-    return;
-  }
+          console.log(`Beep for ${profile.name} @ ${distance.toFixed(2)}m`);
 
-  console.log(`Beep for ${profile.name} @ ${distance.toFixed(2)}m`);
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            const panner = audioContext.createStereoPanner();
 
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    const panner = audioContext.createStereoPanner();
+            // Use test-friendly values
+            osc.type = 'sine'; // you can switch to profile.waveType after confirming it's working
+            osc.frequency.value = 440; // or use profile.frequency
 
-    // Use test-friendly values
-    osc.type = 'sine'; // you can switch to profile.waveType after confirming it's working
-    osc.frequency.value = 440; // or use profile.frequency
+            gain.gain.value = 0.25; // louder and consistent
 
-    gain.gain.value = 0.25; // louder and consistent
+            panner.pan.value = 0; // center for mono/mobile
 
-    panner.pan.value = 0; // center for mono/mobile
+            osc.connect(gain).connect(panner).connect(audioContext.destination);
 
-    osc.connect(gain).connect(panner).connect(audioContext.destination);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.5); // longer tone for clarity
+          } catch (error) {
+            console.error('Audio playback error:', error);
+          }
+        }
 
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.5); // longer tone for clarity
-  } catch (error) {
-    console.error('Audio playback error:', error);
-  }
-}
+        function generateNewUserSoundProfile() {
+          return {
+            frequency: 880, // Higher pitch for notification
+            duration: 0.3, // Shorter duration
+            waveType: 'sine',
+            pan: 0,
+            volume: 0.5
+          };
+        }
 
-function generateNewUserSoundProfile() {
-  return {
-    frequency: 880, // Higher pitch for notification
-    duration: 0.3, // Shorter duration
-    waveType: 'sine',
-    pan: 0,
-    volume: 0.5
-  };
-}
+        function playNewUserSound() {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+            return;
+          }
 
-function playNewUserSound() {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-    return;
-  }
+          const profile = generateNewUserSoundProfile();
+          
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = profile.waveType;
+            osc.frequency.value = profile.frequency;
+            
+            gain.gain.value = profile.volume;
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + profile.duration);
+            
+            osc.connect(gain).connect(audioContext.destination);
+            
+            osc.start();
+            osc.stop(audioContext.currentTime + profile.duration);
+          } catch (error) {
+            console.error('New user sound error:', error);
+          }
+        }
 
-  const profile = generateNewUserSoundProfile();
-  
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.type = profile.waveType;
-    osc.frequency.value = profile.frequency;
-    
-    gain.gain.value = profile.volume;
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + profile.duration);
-    
-    osc.connect(gain).connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + profile.duration);
-  } catch (error) {
-    console.error('New user sound error:', error);
-  }
-}
+        function updateUserBeeps() {
+          console.log('[updateUserBeeps] Running...');
+          userBeepIntervals.forEach((interval, userId) => {
+            clearInterval(interval);
+            userBeepIntervals.delete(userId);
+          });
+          activeSoundProfiles.value = [];
 
+          if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') {
+            console.warn('[updateUserBeeps] Audio not ready');
+            return;
+          }
 
-function updateUserBeeps() {
-  console.log('[updateUserBeeps] Running...');
-  userBeepIntervals.forEach((interval, userId) => {
-    clearInterval(interval);
-    userBeepIntervals.delete(userId);
-  });
-  activeSoundProfiles.value = [];
+          nearbyUsers.value.forEach(user => {
+            console.log(`[updateUserBeeps] Checking user: ${user.name}, ${user.distance.toFixed(2)}m away`);
+            if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
+              const profile = generateSoundProfile(user.id, user.name);
+              const interval = 60000 / profile.bpm;
 
-  if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') {
-    console.warn('[updateUserBeeps] Audio not ready');
-    return;
-  }
+              playBeep(profile, user.distance);
+              const intervalId = setInterval(() => playBeep(profile, user.distance), interval);
 
-  nearbyUsers.value.forEach(user => {
-    console.log(`[updateUserBeeps] Checking user: ${user.name}, ${user.distance.toFixed(2)}m away`);
-    if (user.distance <= 5 && user.id !== selectedUser.value?.id) {
-      const profile = generateSoundProfile(user.id, user.name);
-      const interval = 60000 / profile.bpm;
-
-      playBeep(profile, user.distance);
-      const intervalId = setInterval(() => playBeep(profile, user.distance), interval);
-
-      userBeepIntervals.set(user.id, intervalId);
-      activeSoundProfiles.value.push(profile);
-    }
-  });
-}
+              userBeepIntervals.set(user.id, intervalId);
+              activeSoundProfiles.value.push(profile);
+            }
+          });
+        }
 
         // Toggle sound on/off
         function toggleSound() {
@@ -498,15 +495,15 @@ function updateUserBeeps() {
           }
         }
 
-                setInterval(() => {
-  if (audioContext && audioContext.state === 'suspended') {
-    audioContext.resume().then(() => {
-      audioState.value = 'Running';
-      showAudioPermission.value = false;
-      updateUserBeeps();
-    }).catch(console.error);
-  }
-}, 3000);
+        setInterval(() => {
+          if (audioContext && audioContext.state === 'suspended') {
+            audioContext.resume().then(() => {
+              audioState.value = 'Running';
+              showAudioPermission.value = false;
+              updateUserBeeps();
+            }).catch(console.error);
+          }
+        }, 3000);
 
         function initMap(location) {
           try {
@@ -517,7 +514,7 @@ function updateUserBeeps() {
               
               map = L.map('map').setView(location, 13);
               L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
                 maxZoom: 18
               }).addTo(map);
               
@@ -568,24 +565,24 @@ function updateUserBeeps() {
           updateUserBeeps();
         }
 
-function focusOnMyLocation() {
-  if (map && userLocation.value) {
-    map.setView(userLocation.value, 13);
-    selectedUser.value = null;
-    
-    // Clear selected user marker if it exists
-    if (selectedUserMarker) {
-      map.removeLayer(selectedUserMarker);
-      selectedUserMarker = null;
-    }
-    
-    // Ensure user marker is visible and on top
-    if (userMarker) {
-      userMarker.addTo(map).bringToFront();
-    }
-  }
-  updateUserBeeps();
-}
+        function focusOnMyLocation() {
+          if (map && userLocation.value) {
+            map.setView(userLocation.value, 13);
+            selectedUser.value = null;
+            
+            // Clear selected user marker if it exists
+            if (selectedUserMarker) {
+              map.removeLayer(selectedUserMarker);
+              selectedUserMarker = null;
+            }
+            
+            // Ensure user marker is visible and on top
+            if (userMarker) {
+              userMarker.addTo(map).bringToFront();
+            }
+          }
+          updateUserBeeps();
+        }
 
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
@@ -631,15 +628,14 @@ function focusOnMyLocation() {
           });
         });
 
-async function signIn() {
-  try {
-    await auth.signInAnonymously();
-    console.log('Signed in anonymously');
-  } catch (error) {
-    errorMessage.value = 'Anonymous sign-in failed: ' + error.message;
-  }
-}
-
+        async function signIn() {
+          try {
+            await auth.signInAnonymously();
+            console.log('Signed in anonymously');
+          } catch (error) {
+            errorMessage.value = 'Anonymous sign-in failed: ' + error.message;
+          }
+        }
 
         function getUserLocation() {
           if (!navigator.geolocation) {
@@ -685,6 +681,8 @@ async function signIn() {
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
           if (status.value === 'ONLINE') {
+            // Explicitly clear offline users and fetch only online users
+            nearbyUsers.value = nearbyUsers.value.filter(user => user.status === 'ONLINE');
             fetchNearbyUsers();
           } else {
             nearbyUsers.value = [];
@@ -748,7 +746,8 @@ async function signIn() {
                   distance, 
                   lastSeen: data.lastSeen,
                   latitude: data.latitude,
-                  longitude: data.longitude
+                  longitude: data.longitude,
+                  status: data.status // Include status for filtering
                 };
               })
               .filter(user => user.distance < selectedDistance.value);
