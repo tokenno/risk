@@ -528,6 +528,10 @@
           } else {
             initMap(location);
           }
+          // Ensure map is redrawn
+          if (map) {
+            map.invalidateSize();
+          }
         }
 
         function selectUser(user) {
@@ -777,6 +781,18 @@
         }
 
         function forceRefresh() {
+          if (map) {
+            map.remove(); // Clean up existing map instance
+            map = null;
+            userMarker = null;
+            nearbyMarkers.forEach(marker => marker.remove());
+            nearbyMarkers = [];
+            if (selectedUserMarker) {
+              selectedUserMarker.remove();
+              selectedUserMarker = null;
+            }
+            mapInitialized.value = false; // Reset map initialization state
+          }
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
         }
