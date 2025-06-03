@@ -307,21 +307,25 @@
           source.stop(audioContext.currentTime + 0.1);
         }
 
-        // Generate unique sound profile for each user
-        function generateSoundProfile(userId, userName) {
-          if (!userSoundProfiles.has(userId)) {
-            const nameHash = userName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-            userSoundProfiles.set(userId, {
-              id: userId,
-              name: userName,
-              frequency: 300 + (nameHash % 700), // 300-1000 Hz based on name
-              bpm: 60 + (nameHash % 100), // 60-160 BPM based on name
-              waveType: ['sine', 'square', 'sawtooth', 'triangle'][nameHash % 4],
-              pan: (nameHash % 200 - 100) / 100 // -1 to 1 based on name
-            });
-          }
-          return userSoundProfiles.get(userId);
-        }
+      function generateSoundProfile(userId, userName) {
+  // Always generate a new random profile each run
+  const frequency = Math.floor(Math.random() * (3000 - 300 + 1)) + 300; // 300–3000 Hz
+  const bpm = Math.floor(Math.random() * (160 - 60 + 1)) + 60; // 60–160 BPM
+  const waveType = ['sine', 'square', 'triangle'][Math.floor(Math.random() * 3)];
+  const pan = (Math.random() * 2 - 1).toFixed(2); // -1.0 to 1.0
+
+  const profile = {
+    id: userId,
+    name: userName,
+    frequency,
+    bpm,
+    waveType,
+    pan: parseFloat(pan),
+  };
+
+  userSoundProfiles.set(userId, profile);
+  return profile;
+}
 
 function playBeep(profile, distance) {
   if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
