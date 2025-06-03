@@ -147,6 +147,11 @@
     background: #218838;
     box-shadow: 0 0 0 2px #28a745;
   }
+  .poke-cooldown {
+    font-size: 0.8em;
+    color: #888;
+    margin-top: 5px;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
@@ -221,6 +226,17 @@
           {{ distance.label }}
         </button>
       </div>
+      <button 
+        v-if="selectedUser" 
+        @click="pokeUser"
+        class="secondary"
+        :disabled="isPokeCooldown"
+      >
+        Poke {{ selectedUser.name }}
+      </button>
+      <div v-if="isPokeCooldown" class="poke-cooldown">
+        Poke available in {{ pokeCooldownSeconds }} seconds
+      </div>
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE').length === 0">No users nearby</div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -245,10 +261,19 @@
       <div v-if="activeSoundProfiles.length > 0">
         Active sounds: 
         <span v-for="profile in activeSoundProfiles" :key="profile.id">
-          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz, {{ profile.bpm.toFixed(0) }}BPM)
+          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
         </span>
       </div>
       <div>Audio State: {{ audioState }}</div>
+      <div>
+        Musical Scale: 
+        <select v-model="currentScaleName" @change="updateScale">
+          <option value="pentatonic">Pentatonic</option>
+          <option value="major">Major</option>
+          <option value="minor">Minor</option>
+          <option value="chromatic">Chromatic</option>
+        </select>
+      </div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
   </div>
@@ -270,6 +295,15 @@
     const db = firebase.firestore();
     const auth = firebase.auth();
     firebase.analytics();
+
+    // Musical scales configuration
+    const scales = {
+      pentatonic: [0, 2, 4, 7, 9],    // C D E G A
+      major: [0, 2, 4, 5, 7, 9, 11],   // C D E F G A B
+      minor: [0, 2, 3, 5, 7, 8, 10],   // C D Eb F G Ab Bb
+      chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    };
+    const rootNote = 60; // Middle C (MIDI 60)
 
     createApp({
       setup() {
@@ -298,6 +332,11 @@
         ]);
         const selectedDistance = ref(1000);
         const locationStatus = ref('loading');
+        const currentScaleName = ref('pentatonic');
+        const currentScale = ref(scales.pentatonic);
+        const lastPokeTime = ref(0);
+        const isPokeCooldown = ref(false);
+        const pokeCooldownSeconds = ref(0);
 
         let map = null;
         let userMarker = null;
@@ -307,6 +346,35 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+
+        // Poke cooldown timer
+        const pokeCooldownInterval = setInterval(() => {
+          if (isPokeCooldown.value) {
+            const now = Date.now();
+            const remaining = Math.ceil((lastPokeTime.value + 5000 - now) / 1000);
+            if (remaining > 0) {
+              pokeCooldownSeconds.value = remaining;
+            } else {
+              isPokeCooldown.value = false;
+              pokeCooldownSeconds.value = 0;
+            }
+          }
+        }, 200);
+
+        function updateScale() {
+          currentScale.value = scales[currentScaleName.value];
+          if (soundEnabled.value) {
+            updateUserBeeps();
+          }
+        }
+
+        function latLonToMidi(lat, lon) {
+          const normLat = (lat + 90) / 180;
+          const normLon = (lon + 180) / 360;
+          const degree = Math.floor(normLat * currentScale.value.length) % currentScale.value.length;
+          const octave = Math.floor(normLon * 3);
+          return rootNote + currentScale.value[degree] + 12 * octave;
+        }
 
         function initAudio() {
           if (!audioContext) {
@@ -379,60 +447,60 @@
             return;
           }
 
-          console.log(`Beep for ${profile.name} @ ${distance.toFixed(2)}m`);
+          // Convert GPS to musical note
+          const midiNote = latLonToMidi(profile.latitude, profile.longitude);
+          const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
 
           try {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
             const panner = audioContext.createStereoPanner();
 
-            osc.type = 'sine';
-            osc.frequency.value = 440;
-            gain.gain.value = 0.25;
-            panner.pan.value = 0;
+            osc.type = profile.waveType || 'sine';
+            osc.frequency.value = frequency;
+            gain.gain.value = 0.2 * (1 - distance / 5000);
+            panner.pan.value = profile.pan || 0;
 
             osc.connect(gain).connect(panner).connect(audioContext.destination);
 
             osc.start();
             osc.stop(audioContext.currentTime + 0.5);
+
+            // Update debug info
+            const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
+            if (existingProfileIndex >= 0) {
+              activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
+            } else {
+              activeSoundProfiles.value.push({
+                id: profile.id,
+                name: profile.name,
+                frequency: frequency,
+                bpm: profile.bpm
+              });
+            }
           } catch (error) {
             console.error('Audio playback error:', error);
           }
         }
 
-        function generateNewUserSoundProfile() {
-          return {
-            frequency: 880,
-            duration: 0.3,
-            waveType: 'sine',
-            pan: 0,
-            volume: 0.5
-          };
-        }
-
-        function playNewUserSound() {
-          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-            return;
-          }
-
-          const profile = generateNewUserSoundProfile();
+        function playPokeSound() {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
           
           try {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
             
-            osc.type = profile.waveType;
-            osc.frequency.value = profile.frequency;
-            
-            gain.gain.value = profile.volume;
-            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + profile.duration);
+            osc.type = 'sine';
+            osc.frequency.value = 880;
+            gain.gain.value = 0.5;
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
             
             osc.connect(gain).connect(audioContext.destination);
             
             osc.start();
-            osc.stop(audioContext.currentTime + profile.duration);
+            osc.stop(audioContext.currentTime + 0.3);
           } catch (error) {
-            console.error('New user sound error:', error);
+            console.error('Poke sound error:', error);
           }
         }
 
@@ -572,6 +640,27 @@
           updateUserBeeps();
         }
 
+        async function pokeUser() {
+          if (!selectedUser.value || isPokeCooldown.value) return;
+
+          try {
+            lastPokeTime.value = Date.now();
+            isPokeCooldown.value = true;
+            pokeCooldownSeconds.value = 5;
+
+            await db.collection('users').doc(selectedUser.value.id).update({
+              lastPoke: {
+                from: user.value,
+                fromId: currentUserId.value,
+                timestamp: new Date().toISOString(),
+              }
+            });
+            console.log(`Poked ${selectedUser.value.name}`);
+          } catch (error) {
+            errorMessage.value = "Failed to poke user: " + error.message;
+          }
+        }
+
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
           updateMapLocation(newLocation);
@@ -608,8 +697,17 @@
             if (userData) {
               currentUserId.value = userData.uid;
               user.value = userData.displayName || 'Anonymous';
-              nearbyUsers.value = []; // Clear the list on login
+              nearbyUsers.value = [];
               getUserLocation();
+
+              // Listen for pokes
+              db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+                const data = doc.data();
+                if (data.lastPoke && data.lastPoke.fromId !== currentUserId.value) {
+                  alert(`You were poked by ${data.lastPoke.from}!`);
+                  if (soundEnabled.value) playPokeSound();
+                }
+              });
             } else {
               errorMessage.value = 'Please sign in';
               signIn();
@@ -633,7 +731,7 @@
             return;
           }
           locationStatus.value = 'loading';
-          const timeoutDuration = 10000; // 10 seconds
+          const timeoutDuration = 10000;
           const geoTimeout = setTimeout(() => {
             if (!userLocation.value) {
               locationStatus.value = 'unavailable';
@@ -685,7 +783,6 @@
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
           
-          // Always clear the list when changing status
           nearbyUsers.value = [];
           
           if (status.value === 'ONLINE') {
@@ -735,7 +832,6 @@
             return;
           }
           
-          // Clear the current list before fetching new users
           nearbyUsers.value = [];
           loadingNearby.value = true;
           
@@ -782,7 +878,7 @@
 
         function forceRefresh() {
           if (map) {
-            map.remove(); // Clean up existing map instance
+            map.remove();
             map = null;
             userMarker = null;
             nearbyMarkers.forEach(marker => marker.remove());
@@ -791,37 +887,10 @@
               selectedUserMarker.remove();
               selectedUserMarker = null;
             }
-            mapInitialized.value = false; // Reset map initialization state
+            mapInitialized.value = false;
           }
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
-        }
-
-        async function clearStaleLocations() {
-          if (clearingStaleLocations.value) return;
-          
-          clearingStaleLocations.value = true;
-          const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-          
-          try {
-            const query = db.collection('users')
-              .where('lastSeen', '<', fiveMinutesAgo);
-            
-            const snapshot = await query.get();
-            const batch = db.batch();
-            
-            snapshot.forEach(doc => {
-              batch.delete(doc.ref);
-            });
-            
-            await batch.commit();
-            errorMessage.value = `Cleared ${snapshot.size} stale locations`;
-            fetchNearbyUsers();
-          } catch (error) {
-            errorMessage.value = 'Failed to clear stale locations: ' + error.message;
-          } finally {
-            clearingStaleLocations.value = false;
-          }
         }
 
         return {
@@ -843,16 +912,20 @@
           audioState,
           distanceOptions,
           selectedDistance,
+          currentScaleName,
+          isPokeCooldown,
+          pokeCooldownSeconds,
           toggleStatus,
           changeName,
           toggleSound,
-          clearStaleLocations,
           selectUser,
           focusOnMyLocation,
           formatRelativeTime,
           forceRefresh,
           enableAudio,
           selectDistance,
+          updateScale,
+          pokeUser,
           locationStatus
         };
       }
