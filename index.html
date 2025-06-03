@@ -725,33 +725,46 @@
           return R * c;
         }
 
-        function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
-          }
-          loadingNearby.value = true;
-          const q = db.collection('users').where('status', '==', 'ONLINE');
-          
-          q.onSnapshot((snapshot) => {
-            const previousUserIds = new Set(nearbyUsers.value.map(u => u.id));
-            const currentUsers = snapshot.docs
-              .filter(doc => doc.id !== currentUserId.value)
-              .map(doc => {
-                const data = doc.data();
-                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                return { 
-                  id: doc.id, 
-                  name: data.name, 
-                  distance, 
-                  lastSeen: data.lastSeen,
-                  latitude: data.latitude,
-                  longitude: data.longitude,
-                  status: data.status // Include status for filtering
-                };
-              })
-              .filter(user => user.distance < selectedDistance.value);
+      function fetchNearbyUsers() {
+  if (!userLocation.value) {
+    errorMessage.value = 'Location not available';
+    return;
+  }
+  loadingNearby.value = true;
+  const q = db.collection('users').where('status', '==', 'ONLINE');
+  
+  q.onSnapshot((snapshot) => {
+    const previousUserIds = new Set(nearbyUsers.value.map(u => u.id));
+    const currentUsers = snapshot.docs
+      .filter(doc => doc.id !== currentUserId.value)
+      .map(doc => {
+        const data = doc.data();
+        const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+        return { 
+          id: doc.id, 
+          name: data.name, 
+          distance, 
+          lastSeen: data.lastSeen,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          status: data.status
+        };
+      })
+      .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE'); // Add this filter
 
+    // Detect new users
+    const newUsers = currentUsers.filter(user => !previousUserIds.has(user.id));
+    if (newUsers.length > 0 && soundEnabled.value) {
+      playNewUserSound();
+    }
+
+    nearbyUsers.value = currentUsers;
+    loadingNearby.value = false;
+  }, (error) => {
+    errorMessage.value = 'Failed to load nearby users: ' + error.message;
+    loadingNearby.value = false;
+  });
+}
             // Detect new users
             const newUsers = currentUsers.filter(user => !previousUserIds.has(user.id));
             if (newUsers.length > 0 && soundEnabled.value) {
