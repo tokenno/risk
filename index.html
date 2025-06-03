@@ -152,7 +152,7 @@
     <div class="section">
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
-      <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
+      <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound ' : '🔕 Sound Off' }}</button>
       <button class="warning" @click="clearStaleLocations" :disabled="clearingStaleLocations">
         {{ clearingStaleLocations ? 'Clearing...' : 'Clear Stale Locations' }}
       </button>
@@ -393,24 +393,21 @@
           });
         }
 
-        // Toggle sound on/off
-        function toggleSound() {
-          soundEnabled.value = !soundEnabled.value;
-          if (!soundEnabled.value) {
-            userBeepIntervals.forEach(interval => clearInterval(interval));
-            userBeepIntervals.clear();
-            activeSoundProfiles.value = [];
-          } else {
-            // Resume audio context if needed
-            if (audioContext && audioContext.state === 'suspended') {
-              audioContext.resume().then(() => {
-                updateUserBeeps();
-              });
-            } else if (audioContext && audioContext.state === 'running') {
-              updateUserBeeps();
-            }
-          }
-        }
+function toggleSound() {
+  initAudio(); // Ensure audio context exists
+  soundEnabled.value = !soundEnabled.value;
+  
+  if (!soundEnabled.value) {
+    // Clear all intervals when sound is off
+    userBeepIntervals.forEach(interval => clearInterval(interval));
+    userBeepIntervals.clear();
+    activeSoundProfiles.value = [];
+  } else {
+    // Play test sound when enabling
+    playBeep(440); // Standard A4 tone
+    updateUserBeeps();
+  }
+}
 
         function initMap(location) {
           try {
