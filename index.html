@@ -143,6 +143,10 @@
     gap: 8px;
     margin-top: 8px;
   }
+  button.active {
+    background: #218838;
+    box-shadow: 0 0 0 2px #28a745;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
@@ -186,7 +190,6 @@
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-    
     </div>
 
     <div class="section">
@@ -200,9 +203,9 @@
           </div>
         </div>
         <div class="map-controls" v-if="mapInitialized">
-     <button class="secondary" @click="focusOnMyLocation">
-  Focus on Me
-</button>
+          <button class="secondary" @click="focusOnMyLocation">
+            Focus on Me
+          </button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -211,6 +214,16 @@
 
     <div class="section">
       <h3>Nearby Users ({{ nearbyUsers.length }})</h3>
+      <div class="button-group">
+        <button 
+          v-for="distance in distanceOptions" 
+          :key="distance.value"
+          :class="{ active: selectedDistance === distance.value }"
+          @click="selectDistance(distance.value)"
+        >
+          {{ distance.label }}
+        </button>
+      </div>
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.length === 0">No users nearby</div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -279,6 +292,14 @@
         const activeSoundProfiles = ref([]);
         const showAudioPermission = ref(false);
         const audioState = ref('Not initialized');
+        const distanceOptions = ref([
+          { label: '100m', value: 100 },
+          { label: '1km', value: 1000 },
+          { label: '50km', value: 50000 },
+          { label: '150km', value: 150000 },
+          { label: '500km', value: 500000 }
+        ]);
+        const selectedDistance = ref(1000);
         
         let map = null;
         let userMarker = null;
@@ -393,6 +414,42 @@ function playBeep(profile, distance) {
   }
 }
 
+function generateNewUserSoundProfile() {
+  return {
+    frequency: 880, // Higher pitch for notification
+    duration: 0.3, // Shorter duration
+    waveType: 'sine',
+    pan: 0,
+    volume: 0.5
+  };
+}
+
+function playNewUserSound() {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+    return;
+  }
+
+  const profile = generateNewUserSoundProfile();
+  
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.type = profile.waveType;
+    osc.frequency.value = profile.frequency;
+    
+    gain.gain.value = profile.volume;
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + profile.duration);
+    
+    osc.connect(gain).connect(audioContext.destination);
+    
+    osc.start();
+    osc.stop(audioContext.currentTime + profile.duration);
+  } catch (error) {
+    console.error('New user sound error:', error);
+  }
+}
+
 
 function updateUserBeeps() {
   console.log('[updateUserBeeps] Running...');
@@ -422,44 +479,6 @@ function updateUserBeeps() {
   });
 }
 
-        // ew sound profile function for the "new user" sound 
-        function generateNewUserSoundProfile() {
-  return {
-    frequency: 880, // Higher pitch for notification
-    duration: 0.3, // Shorter duration
-    waveType: 'sine',
-    pan: 0,
-    volume: 0.5
-  };
-}
-
-        // NEW User SOund PLAY
-        
-        function playNewUserSound() {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-    return;
-  }
-
-  const profile = generateNewUserSoundProfile();
-  
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.type = profile.waveType;
-    osc.frequency.value = profile.frequency;
-    
-    gain.gain.value = profile.volume;
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + profile.duration);
-    
-    osc.connect(gain).connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + profile.duration);
-  } catch (error) {
-    console.error('New user sound error:', error);
-  }
-}
         // Toggle sound on/off
         function toggleSound() {
           soundEnabled.value = !soundEnabled.value;
@@ -567,6 +586,7 @@ function focusOnMyLocation() {
   }
   updateUserBeeps();
 }
+
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
           updateMapLocation(newLocation);
@@ -661,19 +681,22 @@ async function signIn() {
           }
         }
 
-async function toggleStatus() {
-  status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
-  await updateUserLocation();
-  if (status.value === 'ONLINE') {
-    fetchNearbyUsers();
-    // If there are already nearby users when coming online, play the sound
-    if (nearbyUsers.value.length > 0 && soundEnabled.value) {
-      playNewUserSound();
-    }
-  } else {
-    nearbyUsers.value = [];
-  }
-}
+        async function toggleStatus() {
+          status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
+          await updateUserLocation();
+          if (status.value === 'ONLINE') {
+            fetchNearbyUsers();
+          } else {
+            nearbyUsers.value = [];
+          }
+        }
+
+        function selectDistance(distance) {
+          selectedDistance.value = distance;
+          if (status.value === 'ONLINE') {
+            fetchNearbyUsers();
+          }
+        }
 
         async function changeName() {
           const newName = prompt('Enter new name:', user.value);
@@ -704,46 +727,45 @@ async function toggleStatus() {
           return R * c;
         }
 
-function fetchNearbyUsers() {
-  if (!userLocation.value) {
-    errorMessage.value = 'Location not available';
-    return;
-  }
-  
-  loadingNearby.value = true;
-  const q = db.collection('users').where('status', '==', 'ONLINE');
-  
-  q.onSnapshot((snapshot) => {
-    const previousUserIds = new Set(nearbyUsers.value.map(u => u.id));
-    const currentUsers = snapshot.docs
-      .filter(doc => doc.id !== currentUserId.value)
-      .map(doc => {
-        const data = doc.data();
-        const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-        return { 
-          id: doc.id, 
-          name: data.name, 
-          distance, 
-          lastSeen: data.lastSeen,
-          latitude: data.latitude,
-          longitude: data.longitude
-        };
-      })
-      .filter(user => user.distance < 10000);
+        function fetchNearbyUsers() {
+          if (!userLocation.value) {
+            errorMessage.value = 'Location not available';
+            return;
+          }
+          loadingNearby.value = true;
+          const q = db.collection('users').where('status', '==', 'ONLINE');
+          
+          q.onSnapshot((snapshot) => {
+            const previousUserIds = new Set(nearbyUsers.value.map(u => u.id));
+            const currentUsers = snapshot.docs
+              .filter(doc => doc.id !== currentUserId.value)
+              .map(doc => {
+                const data = doc.data();
+                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+                return { 
+                  id: doc.id, 
+                  name: data.name, 
+                  distance, 
+                  lastSeen: data.lastSeen,
+                  latitude: data.latitude,
+                  longitude: data.longitude
+                };
+              })
+              .filter(user => user.distance < selectedDistance.value);
 
-    // Detect new users
-    const newUsers = currentUsers.filter(user => !previousUserIds.has(user.id));
-    if (newUsers.length > 0 && soundEnabled.value) {
-      playNewUserSound();
-    }
+            // Detect new users
+            const newUsers = currentUsers.filter(user => !previousUserIds.has(user.id));
+            if (newUsers.length > 0 && soundEnabled.value) {
+              playNewUserSound();
+            }
 
-    nearbyUsers.value = currentUsers;
-    loadingNearby.value = false;
-  }, (error) => {
-    errorMessage.value = 'Failed to load nearby users: ' + error.message;
-    loadingNearby.value = false;
-  });
-}
+            nearbyUsers.value = currentUsers;
+            loadingNearby.value = false;
+          }, (error) => {
+            errorMessage.value = 'Failed to load nearby users: ' + error.message;
+            loadingNearby.value = false;
+          });
+        }
 
         function formatRelativeTime(timestamp) {
           const now = new Date();
@@ -803,6 +825,8 @@ function fetchNearbyUsers() {
           activeSoundProfiles,
           showAudioPermission,
           audioState,
+          distanceOptions,
+          selectedDistance,
           toggleStatus,
           changeName,
           toggleSound,
@@ -811,7 +835,8 @@ function fetchNearbyUsers() {
           focusOnMyLocation,
           formatRelativeTime,
           forceRefresh,
-          enableAudio
+          enableAudio,
+          selectDistance
         };
       }
     }).mount('#app');
