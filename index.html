@@ -258,7 +258,7 @@
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
 
-        // Initialize audio context
+      // Initialize audio context
         function initAudio() {
           if (!audioContext) {
             try {
@@ -363,7 +363,7 @@
           }
         }
 
-        // Update beeps for all users within 5m
+     // Update beeps for all users within 5m
         function updateUserBeeps() {
           // Clear all existing intervals
           userBeepIntervals.forEach((interval, userId) => {
