@@ -232,6 +232,7 @@
         const mapInitialized = ref(false);
         const selectedUser = ref(null);
         const activeSoundProfiles = ref([]);
+        const audioReady = ref(false);
         
         let map = null;
         let userMarker = null;
@@ -242,31 +243,39 @@
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
 
-       // Initialize audio context
+        // Initialize audio context
         function initAudio() {
           if (!audioContext) {
             try {
               audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              // Resume audio context on any user interaction
-              document.addEventListener('click', resumeAudioContext, { once: true });
+              // Create a silent buffer to unlock audio on iOS
+              const buffer = audioContext.createBuffer(1, 1, 22050);
+              const source = audioContext.createBufferSource();
+              source.buffer = buffer;
+              source.connect(audioContext.destination);
+              source.start(0);
+              
+              // Add click event listener to resume audio context
+              const handleFirstClick = () => {
+                if (audioContext.state === 'suspended') {
+                  audioContext.resume().then(() => {
+                    console.log('AudioContext resumed successfully');
+                    audioReady.value = true;
+                    if (soundEnabled.value) {
+                      updateUserBeeps();
+                    }
+                  }).catch(error => {
+                    console.error('Failed to resume AudioContext:', error);
+                  });
+                }
+                document.removeEventListener('click', handleFirstClick);
+              };
+              
+              document.addEventListener('click', handleFirstClick);
             } catch (error) {
               console.error('AudioContext error:', error);
               errorMessage.value = 'Audio initialization failed. Try refreshing the page.';
             }
-          }
-        }
-
-        // Resume audio context (required for mobile and some browsers)
-        function resumeAudioContext() {
-          if (audioContext && audioContext.state === 'suspended') {
-            audioContext.resume().then(() => {
-              console.log('AudioContext resumed successfully');
-              if (soundEnabled.value) {
-                updateUserBeeps();
-              }
-            }).catch(error => {
-              console.error('Failed to resume AudioContext:', error);
-            });
           }
         }
 
@@ -288,7 +297,7 @@
 
         // Play beep with custom frequency and distance-based effects
         function playBeep(profile, distance) {
-          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+          if (!audioContext || !soundEnabled.value || !audioReady.value || audioContext.state !== 'running') return;
           
           try {
             const oscillator = audioContext.createOscillator();
@@ -333,8 +342,8 @@
           });
           activeSoundProfiles.value = [];
 
-          // Don't proceed if audio isn't enabled or context isn't running
-          if (!soundEnabled.value || (audioContext && audioContext.state !== 'running')) return;
+          // Don't proceed if audio isn't enabled or context isn't ready
+          if (!soundEnabled.value || !audioReady.value || (audioContext && audioContext.state !== 'running')) return;
 
           // Create new intervals for users within 5m (excluding selected user)
           nearbyUsers.value.forEach(user => {
@@ -356,7 +365,6 @@
 
         // Toggle sound on/off
         function toggleSound() {
-          resumeAudioContext();
           soundEnabled.value = !soundEnabled.value;
           if (!soundEnabled.value) {
             userBeepIntervals.forEach(interval => clearInterval(interval));
@@ -366,9 +374,10 @@
             // Resume audio context if needed
             if (audioContext && audioContext.state === 'suspended') {
               audioContext.resume().then(() => {
+                audioReady.value = true;
                 updateUserBeeps();
               });
-            } else {
+            } else if (audioReady.value) {
               updateUserBeeps();
             }
           }
@@ -540,7 +549,6 @@
         }
 
         async function toggleStatus() {
-          resumeAudioContext();
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
           if (status.value === 'ONLINE') {
@@ -665,6 +673,7 @@
           mapInitialized,
           selectedUser,
           activeSoundProfiles,
+          audioReady,
           toggleStatus,
           changeName,
           toggleSound,
