@@ -393,21 +393,24 @@
           });
         }
 
-function toggleSound() {
-  initAudio(); // Ensure audio context exists
-  soundEnabled.value = !soundEnabled.value;
-  
-  if (!soundEnabled.value) {
-    // Clear all intervals when sound is off
-    userBeepIntervals.forEach(interval => clearInterval(interval));
-    userBeepIntervals.clear();
-    activeSoundProfiles.value = [];
-  } else {
-    // Play test sound when enabling
-    playBeep(440); // Standard A4 tone
-    updateUserBeeps();
-  }
-}
+        // Toggle sound on/off
+        function toggleSound() {
+          soundEnabled.value = !soundEnabled.value;
+          if (!soundEnabled.value) {
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          } else {
+            // Resume audio context if needed
+            if (audioContext && audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                updateUserBeeps();
+              });
+            } else if (audioContext && audioContext.state === 'running') {
+              updateUserBeeps();
+            }
+          }
+        }
 
         function initMap(location) {
           try {
