@@ -439,16 +439,7 @@ function enableAudio() {
           }
         }
 
-        function enableAudio() {
-          resumeAudioContext();
-          const buffer = audioContext.createBuffer(1, 1, 22050);
-          const source = audioContext.createBufferSource();
-          source.buffer = buffer;
-          source.connect(audioContext.destination);
-          source.start(0);
-          source.stop(audioContext.currentTime + 0.1);
-        }
-
+     
         function generateSoundProfile(userId, userName) {
           const frequency = Math.floor(Math.random() * (2000 - 400 + 1)) + 400;
           const bpm = Math.floor(Math.random() * (120 - 60 + 1)) + 60;
