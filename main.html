@@ -179,11 +179,7 @@
 </head>
 <body>
   <div id="app" class="container">
-    <div class="section audio-permission" v-if="showAudioPermission">
-      <h3>Audio Permission Required</h3>
-      <p>Please tap the button below to enable sound notifications for nearby users</p>
-      <button @click="enableAudio">Enable Sound</button>
-    </div>
+
 
     <div class="section">
       <div v-if="user" class="user-info">
@@ -255,7 +251,7 @@
         <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
         <div>{{ formatRelativeTime(user.lastSeen) }}</div>
       </div>
-    </div>
+    
 
     <div class="section debug">
       <h3>Debug Information</h3>
@@ -281,7 +277,12 @@
       </div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
-  </div>
+   <div id="app" class="container">
+ <div class="section audio-permission" v-if="showAudioPermission">
+  <h3>Audio Permission Required</h3>
+  <p>Please tap the button below to enable sound notifications</p>
+  <button @click="enableAudio">Enable Sound</button>
+</div>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -312,6 +313,7 @@
 
     createApp({
       setup() {
+          
         const user = ref(null);
         const status = ref('OFFLINE');
         const currentUserId = ref(null);
@@ -326,7 +328,7 @@
         const mapInitialized = ref(false);
         const selectedUser = ref(null);
         const activeSoundProfiles = ref([]);
-        const showAudioPermission = ref(false);
+        const showAudioPermission = ref(true);
         const audioState = ref('Not initialized');
         const distanceOptions = ref([
           { label: '100m', value: 100 },
@@ -342,6 +344,7 @@
         const lastPokeTime = ref(0);
         const isPokeCooldown = ref(false);
         const pokeCooldownSeconds = ref(0);
+          
 
         let map = null;
         let userMarker = null;
@@ -381,24 +384,44 @@
           return rootNote + currentScale.value[degree] + 12 * octave;
         }
 
-        function initAudio() {
-          if (!audioContext) {
-            try {
-              audioContext = new (window.AudioContext || window.webkitAudioContext)();
-              audioState.value = 'Initialized (suspended)';
-              
-              if (/Mobi|Android/i.test(navigator.userAgent)) {
-                showAudioPermission.value = true;
-              } else {
-                resumeAudioContext();
-              }
-            } catch (error) {
-              console.error('AudioContext error:', error);
-              errorMessage.value = 'Audio initialization failed. Try refreshing the page.';
-              audioState.value = 'Initialization failed';
-            }
-          }
-        }
+       function initAudio() {
+  // Don't initialize immediately - wait for user interaction
+  audioState.value = 'Waiting for user interaction';
+}
+
+function enableAudio() {
+  if (!audioContext) {
+    try {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      audioState.value = 'Initialized (suspended)';
+    } catch (error) {
+      console.error('AudioContext error:', error);
+      audioState.value = 'Initialization failed';
+      return;
+    }
+  }
+  
+  // Resume the context (this must happen after user interaction)
+  audioContext.resume().then(() => {
+    console.log('AudioContext resumed successfully');
+    audioState.value = 'Running';
+    showAudioPermission.value = false;
+    if (soundEnabled.value) {
+      updateUserBeeps();
+    }
+  }).catch(error => {
+    console.error('Failed to resume AudioContext:', error);
+    audioState.value = 'Resume failed';
+  });
+  
+  // Play a silent sound to warm up the audio context
+  const buffer = audioContext.createBuffer(1, 1, 22050);
+  const source = audioContext.createBufferSource();
+  source.buffer = buffer;
+  source.connect(audioContext.destination);
+  source.start(0);
+  source.stop(audioContext.currentTime + 0.1);
+}
 
         function resumeAudioContext() {
           if (audioContext && audioContext.state === 'suspended') {
@@ -566,22 +589,27 @@
           });
         }
 
-        function toggleSound() {
-          soundEnabled.value = !soundEnabled.value;
-          if (!soundEnabled.value) {
-            userBeepIntervals.forEach(interval => clearInterval(interval));
-            userBeepIntervals.clear();
-            activeSoundProfiles.value = [];
-          } else {
-            if (audioContext && audioContext.state === 'suspended') {
-              audioContext.resume().then(() => {
-                updateUserBeeps();
-              });
-            } else if (audioContext && audioContext.state === 'running') {
-              updateUserBeeps();
-            }
-          }
-        }
+   function toggleSound() {
+  soundEnabled.value = !soundEnabled.value;
+  
+  if (soundEnabled.value) {
+    // When enabling sound, ensure we have user interaction
+    if (!audioContext) {
+      enableAudio();
+    } else if (audioContext.state === 'suspended') {
+      audioContext.resume().then(() => {
+        updateUserBeeps();
+      });
+    } else {
+      updateUserBeeps();
+    }
+  } else {
+    // When disabling sound, clear everything
+    userBeepIntervals.forEach(interval => clearInterval(interval));
+    userBeepIntervals.clear();
+    activeSoundProfiles.value = [];
+  }
+}
 
         setInterval(() => {
           if (audioContext && audioContext.state === 'suspended') {
