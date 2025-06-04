@@ -368,7 +368,7 @@
 
         function updateScale() {
           currentScale.value = scales[currentScaleName.value];
-          if (soundEnabled.value) {
+          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
           }
         }
@@ -508,27 +508,30 @@
             console.error('Poke sound error:', error);
           }
         }
-          // ADD THE NEW FUNCTION RIGHT HERE
-function playNewUserSound() {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
-  
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    
-    osc.type = 'sine';
-    osc.frequency.value = 440;
-    gain.gain.value = 0.5;
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-    
-    osc.connect(gain).connect(audioContext.destination);
-    
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.5);
-  } catch (error) {
-    console.error('New user sound error:', error);
-  }
-}
+
+        function playNewUserSound() {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+            console.warn('playNewUserSound skipped — audio not ready');
+            return;
+          }
+
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.value = 1000;
+            gain.gain.value = 0.3;
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+            osc.connect(gain).connect(audioContext.destination);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.3);
+          } catch (error) {
+            console.error('playNewUserSound error:', error);
+            errorMessage.value = 'Failed to play new user sound: ' + error.message;
+          }
+        }
 
         function updateUserBeeps() {
           console.log('[updateUserBeeps] Running...');
@@ -538,8 +541,13 @@ function playNewUserSound() {
           });
           activeSoundProfiles.value = [];
 
-          if (!soundEnabled.value || !audioContext || audioContext.state !== 'running') {
+          if (!soundEnabled.value || !audioContext) {
             console.warn('[updateUserBeeps] Audio not ready');
+            return;
+          }
+
+          if (audioContext.state === 'suspended') {
+            resumeAudioContext();
             return;
           }
 
@@ -580,7 +588,6 @@ function playNewUserSound() {
             audioContext.resume().then(() => {
               audioState.value = 'Running';
               showAudioPermission.value = false;
-              updateUserBeeps();
             }).catch(console.error);
           }
         }, 3000);
@@ -646,7 +653,9 @@ function playNewUserSound() {
             
             map.setView([user.latitude, user.longitude], 13);
           }
-          updateUserBeeps();
+          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+            updateUserBeeps();
+          }
         }
 
         function focusOnMyLocation() {
@@ -663,7 +672,9 @@ function playNewUserSound() {
               userMarker.addTo(map).bringToFront();
             }
           }
-          updateUserBeeps();
+          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+            updateUserBeeps();
+          }
         }
 
         async function pokeUser() {
@@ -706,7 +717,9 @@ function playNewUserSound() {
               }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
             });
           }
-          updateUserBeeps();
+          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+            updateUserBeeps();
+          }
         });
 
         watch(status, (newStatus) => {
@@ -884,8 +897,15 @@ function playNewUserSound() {
             nearbyUsers.value = currentUsers;
             loadingNearby.value = false;
             
-            if (currentUsers.length > 0 && soundEnabled.value) {
-              playNewUserSound();
+            if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+              snapshot.docChanges().forEach(change => {
+                if (change.type === 'added' && change.doc.data().status === 'ONLINE') {
+                  const userDistance = calculateDistance(userLocation.value, [change.doc.data().latitude, change.doc.data().longitude]);
+                  if (userDistance < selectedDistance.value) {
+                    playNewUserSound();
+                  }
+                }
+              });
             }
           }, (error) => {
             errorMessage.value = 'Failed to load nearby users: ' + error.message;
@@ -918,7 +938,6 @@ function playNewUserSound() {
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
         }
-      
 
         return {
           user,
@@ -955,10 +974,6 @@ function playNewUserSound() {
           pokeUser,
           locationStatus
         };
-      return {
-  // ... all your existing returned properties ...
-  playNewUserSound // Add this to the list
-}
       }
     }).mount('#app');
   </script>
