@@ -71,25 +71,25 @@
     font-size: 0.8em;
     margin-top: 8px;
   }
-  .user-list div {
+  .user-list div, .chat-list div {
     padding: 8px;
     border-bottom: 1px solid #444;
     transition: background 0.2s;
     color: #e0e0e0;
     cursor: pointer;
   }
-  .user-list div:hover {
+  .user-list div:hover, .chat-list div:hover {
     background: #3a3a3a;
   }
-  .user-list div.selected {
+  .user-list div.selected, .chat-list div.selected {
     background: #3a3a3a;
     border-left: 3px solid #28a745;
   }
-  .user-list div:last-child {
+  .user-list div:last-child, .chat-list div:last-child {
     border-bottom: none;
   }
   #map {
-    height: 300px; /* Modified: Default height for desktop */
+    height: 300px;
     width: 100%;
     border: 1px solid #555;
     border-radius: 4px;
@@ -98,7 +98,7 @@
   }
   @media (max-width: 768px) {
     #map {
-      height: 60vh; /* Modified: Taller map for mobile portrait view */
+      height: 60vh;
     }
   }
   .map-loading {
@@ -157,15 +157,38 @@
     color: #888;
     margin-top: 5px;
   }
+  .chat-input {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .chat-input input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #555;
+    border-radius: 4px;
+    background: #2c2c2c;
+    color: #e0e0e0;
+    font-size: 0.85em;
+  }
+  .messages {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    padding: 8px;
+    border: 1px solid #444;
+    border-radius: 4px;
+  }
+  .messages div {
+    padding: 4px 0;
+    font-size: 0.85em;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
     }
     .section {
       padding: 12px;
-    }
-    #map {
-      height: 180px; /* Modified: Removed to use 60vh for mobile */
     }
     .button-group {
       flex-direction: column;
@@ -254,7 +277,33 @@
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
         <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
         <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+        <button class="secondary" @click.stop="startChatWithUser(user)">Chat with {{ user.name }}</button>
       </div>
+    </div>
+
+    <!-- New Messaging Section -->
+    <div class="section">
+      <h3>Messages</h3>
+      <div class="chat-list">
+        <div v-for="chat in chats" :key="chat.id" 
+             :class="{ selected: selectedChat?.id === chat.id }"
+             @click="selectChat(chat.id)">
+          <div>{{ chat.title }}</div>
+          <div>Last message: {{ chat.lastMessage || 'No messages yet' }}</div>
+        </div>
+        <div v-if="!chats.length">No chats available</div>
+      </div>
+      <div v-if="selectedChat" class="messages">
+        <div v-for="message in messages" :key="message.id">
+          {{ message.senderName }}: {{ message.text }} ({{ formatMessageTime(message.timestamp) }})
+        </div>
+        <div v-if="!messages.length">No messages in this chat</div>
+      </div>
+      <div v-if="selectedChat" class="chat-input">
+        <input v-model="newMessage" placeholder="Type a message..." />
+        <button @click="sendMessage">Send</button>
+      </div>
+      <div v-if="chatError" class="error">{{ chatError }}</div>
     </div>
 
     <div class="section debug">
@@ -303,12 +352,12 @@
 
     // Musical scales configuration
     const scales = {
-      pentatonic: [0, 2, 4, 7, 9],    // C D E G A
-      major: [0, 2, 4, 5, 7, 9, 11],   // C D E F G A B
-      minor: [0, 2, 3, 5, 7, 8, 10],   // C D Eb F G Ab Bb
+      pentatonic: [0, 2, 4, 7, 9],
+      major: [0, 2, 4, 5, 7, 9, 11],
+      minor: [0, 2, 3, 5, 7, 8, 10],
       chromatic: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
     };
-    const rootNote = 60; // Middle C (MIDI 60)
+    const rootNote = 60;
 
     createApp({
       setup() {
@@ -342,6 +391,12 @@
         const lastPokeTime = ref(0);
         const isPokeCooldown = ref(false);
         const pokeCooldownSeconds = ref(0);
+        // New messaging state
+        const chats = ref([]);
+        const selectedChat = ref(null);
+        const messages = ref([]);
+        const newMessage = ref('');
+        const chatError = ref('');
 
         let map = null;
         let userMarker = null;
@@ -452,7 +507,6 @@
             return;
           }
 
-          // Convert GPS to musical note
           const midiNote = latLonToMidi(profile.latitude, profile.longitude);
           const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
 
@@ -471,7 +525,6 @@
             osc.start();
             osc.stop(audioContext.currentTime + 0.5);
 
-            // Update debug info
             const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
             if (existingProfileIndex >= 0) {
               activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
@@ -506,6 +559,27 @@
             osc.stop(audioContext.currentTime + 0.3);
           } catch (error) {
             console.error('Poke sound error:', error);
+          }
+        }
+
+        function playNewUserSound() {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+          
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = 440;
+            gain.gain.value = 0.3;
+            gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+            
+            osc.connect(gain).connect(audioContext.destination);
+            
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.2);
+          } catch (error) {
+            console.error('New user sound error:', error);
           }
         }
 
@@ -601,7 +675,6 @@
           } else {
             initMap(location);
           }
-          // Ensure map is redrawn
           if (map) {
             map.invalidateSize();
           }
@@ -666,6 +739,68 @@
           }
         }
 
+        // New messaging methods
+        async function startChatWithUser(otherUser) {
+          try {
+            const chatRef = await db.collection('chats').add({
+              title: `${user.value} & ${otherUser.name}`,
+              members: { [currentUserId.value]: true, [otherUser.id]: true },
+              lastMessage: '',
+              timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            await db.collection('chatMembers').doc(chatRef.id).set({
+              members: { [currentUserId.value]: true, [otherUser.id]: true }
+            });
+
+            selectChat(chatRef.id);
+          } catch (error) {
+            chatError.value = 'Failed to start chat: ' + error.message;
+          }
+        }
+
+        function selectChat(chatId) {
+          selectedChat.value = chats.value.find(chat => chat.id === chatId);
+          if (selectedChat.value) {
+            db.collection(`messages/${chatId}/messages`)
+              .orderBy('timestamp', 'asc')
+              .onSnapshot((snapshot) => {
+                messages.value = snapshot.docs.map(doc => ({
+                  id: doc.id,
+                  ...doc.data()
+                }));
+              }, (error) => {
+                chatError.value = 'Failed to load messages: ' + error.message;
+              });
+          }
+        }
+
+        async function sendMessage() {
+          if (!newMessage.value.trim() || !selectedChat.value) return;
+
+          try {
+            await db.collection(`messages/${selectedChat.value.id}/messages`).add({
+              senderId: currentUserId.value,
+              senderName: user.value,
+              text: newMessage.value,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            await db.collection('chats').doc(selectedChat.value.id).update({
+              lastMessage: newMessage.value,
+              timestamp: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            newMessage.value = '';
+          } catch (error) {
+            chatError.value = 'Failed to send message: ' + error.message;
+          }
+        }
+
+        function formatMessageTime(timestamp) {
+          return timestamp ? new Date(timestamp.toMillis()).toLocaleTimeString() : '';
+        }
+
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
           updateMapLocation(newLocation);
@@ -713,6 +848,18 @@
                   if (soundEnabled.value) playPokeSound();
                 }
               });
+
+              // Listen for chats
+              db.collection('chats')
+                .where(`members.${currentUserId.value}`, '==', true)
+                .onSnapshot((snapshot) => {
+                  chats.value = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                  }));
+                }, (error) => {
+                  errorMessage.value = 'Failed to load chats: ' + error.message;
+                });
             } else {
               errorMessage.value = 'Please sign in';
               signIn();
@@ -729,7 +876,7 @@
           }
         }
 
-        function getUserLocation() {
+        async function getUserLocation() {
           if (!navigator.geolocation) {
             errorMessage.value = 'Geolocation is not supported by your browser';
             locationStatus.value = 'unavailable';
@@ -920,6 +1067,11 @@
           currentScaleName,
           isPokeCooldown,
           pokeCooldownSeconds,
+          chats,
+          selectedChat,
+          messages,
+          newMessage,
+          chatError,
           toggleStatus,
           changeName,
           toggleSound,
@@ -931,6 +1083,10 @@
           selectDistance,
           updateScale,
           pokeUser,
+          startChatWithUser,
+          selectChat,
+          sendMessage,
+          formatMessageTime,
           locationStatus
         };
       }
