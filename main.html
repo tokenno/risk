@@ -918,53 +918,94 @@ function enableAudio() {
           return R * c;
         }
 
-        async function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
-          }
-          
-          nearbyUsers.value = [];
-          loadingNearby.value = true;
-          
-          const q = db.collection('users').where('status', '==', 'ONLINE');
-          
-          q.onSnapshot((snapshot) => {
-            const currentUsers = snapshot.docs
-              .filter(doc => doc.id !== currentUserId.value)
-              .map(doc => {
-                const data = doc.data();
-                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                return { 
-                  id: doc.id, 
-                  name: data.name, 
-                  distance, 
-                  lastSeen: data.lastSeen,
-                  latitude: data.latitude,
-                  longitude: data.longitude,
-                  status: data.status
-                };
-              })
-              .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE');
+    async function fetchNearbyUsers() {
+  if (!userLocation.value) {
+    errorMessage.value = 'Location not available';
+    return;
+  }
+  
+  nearbyUsers.value = [];
+  loadingNearby.value = true;
+  
+  const q = db.collection('users').where('status', '==', 'ONLINE');
+  
+  q.onSnapshot((snapshot) => {
+    const currentUsers = snapshot.docs
+      .filter(doc => {
+        // Validate user data before processing
+        const data = doc.data();
+        return doc.id !== currentUserId.value && 
+               isValidCoordinate(data.latitude) && 
+               isValidCoordinate(data.longitude);
+      })
+      .map(doc => {
+        const data = doc.data();
+        const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+        return { 
+          id: doc.id, 
+          name: data.name, 
+          distance, 
+          lastSeen: data.lastSeen,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          status: data.status
+        };
+      })
+      .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE');
 
-            nearbyUsers.value = currentUsers;
-            loadingNearby.value = false;
-            
-            if (soundEnabled.value && audioContext && audioContext.state === 'running') {
-              snapshot.docChanges().forEach(change => {
-                if (change.type === 'added' && change.doc.data().status === 'ONLINE') {
-                  const userDistance = calculateDistance(userLocation.value, [change.doc.data().latitude, change.doc.data().longitude]);
-                  if (userDistance < selectedDistance.value) {
-                    playNewUserSound();
-                  }
-                }
-              });
-            }
-          }, (error) => {
-            errorMessage.value = 'Failed to load nearby users: ' + error.message;
-            loadingNearby.value = false;
-          });
-        }
+    nearbyUsers.value = currentUsers;
+    loadingNearby.value = false;
+    
+    // ... rest of your existing code ...
+  }, (error) => {
+    errorMessage.value = 'Failed to load nearby users: ' + error.message;
+    loadingNearby.value = false;
+  });
+}
+      
+      //Clean up invalid data in Firebase
+async function cleanInvalidUserLocations() {
+  const snapshot = await db.collection('users').get();
+  const batch = db.batch();
+  
+  snapshot.forEach(doc => {
+    const data = doc.data();
+    if (!isValidCoordinate(data.latitude) || !isValidCoordinate(data.longitude)) {
+      console.log('Cleaning invalid location for user:', doc.id, data.name);
+      batch.update(doc.ref, {
+        latitude: 0,  // Default valid location
+        longitude: 0  // Default valid location
+      });
+    }
+  });
+  
+  await batch.commit();
+  console.log('Finished cleaning invalid locations');
+}
+      // . Update your user data processing to handle invalid locations:
+      function processUserData(userData) {
+  // Ensure we have valid data
+  if (!userData || !isValidCoordinate(userData.latitude) || !isValidCoordinate(userData.longitude)) {
+    console.warn('Invalid user location data:', userData);
+    return null;
+  }
+  
+  return {
+    id: userData.id,
+    name: userData.name || 'Anonymous',
+    latitude: userData.latitude,
+    longitude: userData.longitude,
+    // ... other fields ...
+  };
+}
+      
+// Helper function to validate coordinates
+function isValidCoordinate(coord) {
+  return typeof coord === 'number' && 
+         !isNaN(coord) && 
+         isFinite(coord) &&
+         (Math.abs(coord) <= 180); // Valid for both latitude and longitude
+}
 
         function formatRelativeTime(timestamp) {
           const now = new Date();
