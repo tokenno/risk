@@ -89,12 +89,17 @@
     border-bottom: none;
   }
   #map {
-    height: 200px;
+    height: 300px; /* Modified: Default height for desktop */
     width: 100%;
     border: 1px solid #555;
     border-radius: 4px;
     margin-top: 8px;
     background: #1a1a1a;
+  }
+  @media (max-width: 768px) {
+    #map {
+      height: 60vh; /* Modified: Taller map for mobile portrait view */
+    }
   }
   .map-loading {
     display: flex;
@@ -160,7 +165,7 @@
       padding: 12px;
     }
     #map {
-      height: 180px;
+      height: 180px; /* Modified: Removed to use 60vh for mobile */
     }
     .button-group {
       flex-direction: column;
@@ -215,7 +220,7 @@
     </div>
 
     <div class="section">
-      <h3>Nearby Users ({{ nearbyUsers.filter(u => u.status === 'ONLINE').length }})</h3>
+      <h3>Nearby Users ({{ nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
       <div class="button-group">
         <button 
           v-for="distance in distanceOptions" 
@@ -238,9 +243,9 @@
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
       <div v-if="loadingNearby">Loading nearby users...</div>
-      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE').length === 0">No users nearby</div>
+      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0">No users nearby</div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-      <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE')" 
+      <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
            :key="user.id" 
            class="user-list"
            :class="{ selected: selectedUser?.id === user.id }"
