@@ -376,13 +376,36 @@
           }
         }
 
-        function latLonToMidi(lat, lon) {
-          const normLat = (lat + 90) / 180;
-          const normLon = (lon + 180) / 360;
-          const degree = Math.floor(normLat * currentScale.value.length) % currentScale.value.length;
-          const octave = Math.floor(normLon * 3);
-          return rootNote + currentScale.value[degree] + 12 * octave;
-        }
+       function latLonToMidi(lat, lon) {
+  // Validate inputs
+  if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
+    console.warn('Invalid coordinates provided to latLonToMidi');
+    return 60; // Middle C as fallback
+  }
+
+  // Normalize coordinates to safe ranges
+  const safeLat = Math.max(-90, Math.min(90, lat));
+  const safeLon = Math.max(-180, Math.min(180, lon));
+
+  // Calculate scale degree (0 to scale length-1)
+  const normLat = (safeLat + 90) / 180; // 0 to 1
+  const degreeIndex = Math.floor(normLat * currentScale.value.length) % currentScale.value.length;
+
+  // Calculate octave (0 to 2)
+  const normLon = (safeLon + 180) / 360; // 0 to 1
+  const octave = Math.min(2, Math.floor(normLon * 3)); // Limit to 0-2 octaves
+
+  // Calculate final MIDI note
+  const midiNote = rootNote + currentScale.value[degreeIndex] + (12 * octave);
+  
+  // Final validation
+  if (midiNote < 0 || midiNote > 127 || !Number.isInteger(midiNote)) {
+    console.warn(`Calculated invalid MIDI note: ${midiNote} from lat ${lat}, lon ${lon}`);
+    return 60; // Middle C as fallback
+  }
+
+  return midiNote;
+}
 
        function initAudio() {
   // Don't initialize immediately - wait for user interaction
@@ -460,47 +483,58 @@ function enableAudio() {
           return profile;
         }
 
-        function playBeep(profile, distance) {
-          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-            console.warn('playBeep skipped — audio not ready');
-            return;
-          }
+   function playBeep(profile, distance) {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+    console.warn('playBeep skipped — audio not ready');
+    return;
+  }
 
-          // Convert GPS to musical note
-          const midiNote = latLonToMidi(profile.latitude, profile.longitude);
-          const frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+  // Convert GPS to musical note with validation
+  const midiNote = latLonToMidi(profile.latitude, profile.longitude);
+  let frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+  
+  // Validate frequency range
+  frequency = Math.max(20, Math.min(20000, frequency)); // Limit to human hearing range
+  if (isNaN(frequency) || !isFinite(frequency)) {
+    console.warn('Invalid frequency calculated, using default');
+    frequency = 440; // Fallback to A4
+  }
 
-          try {
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-            const panner = audioContext.createStereoPanner();
+  // Validate gain value
+  let gainValue = 0.2 * (1 - distance / 5000);
+  gainValue = Math.max(0, Math.min(1, gainValue)); // Clamp between 0 and 1
 
-            osc.type = profile.waveType || 'sine';
-            osc.frequency.value = frequency;
-            gain.gain.value = 0.2 * (1 - distance / 5000);
-            panner.pan.value = profile.pan || 0;
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    const panner = audioContext.createStereoPanner();
 
-            osc.connect(gain).connect(panner).connect(audioContext.destination);
+    osc.type = profile.waveType || 'sine';
+    osc.frequency.value = frequency;
+    gain.gain.value = gainValue;
+    panner.pan.value = profile.pan || 0;
 
-            osc.start();
-            osc.stop(audioContext.currentTime + 0.5);
+    osc.connect(gain).connect(panner).connect(audioContext.destination);
 
-            // Update debug info
-            const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
-            if (existingProfileIndex >= 0) {
-              activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
-            } else {
-              activeSoundProfiles.value.push({
-                id: profile.id,
-                name: profile.name,
-                frequency: frequency,
-                bpm: profile.bpm
-              });
-            }
-          } catch (error) {
-            console.error('Audio playback error:', error);
-          }
-        }
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5);
+
+    // Update debug info
+    const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
+    if (existingProfileIndex >= 0) {
+      activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
+    } else {
+      activeSoundProfiles.value.push({
+        id: profile.id,
+        name: profile.name,
+        frequency: frequency,
+        bpm: profile.bpm
+      });
+    }
+  } catch (error) {
+    console.error('Audio playback error:', error);
+  }
+}
 
         function playPokeSound() {
           if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
@@ -547,23 +581,23 @@ function enableAudio() {
           }
         }
 
-        function updateUserBeeps() {
-          console.log('[updateUserBeeps] Running...');
-          userBeepIntervals.forEach((interval, userId) => {
-            clearInterval(interval);
-            userBeepIntervals.delete(userId);
-          });
-          activeSoundProfiles.value = [];
+       function updateUserBeeps() {
+  console.log('[updateUserBeeps] Running...');
+  userBeepIntervals.forEach((interval, userId) => {
+    clearInterval(interval);
+    userBeepIntervals.delete(userId);
+  });
+  activeSoundProfiles.value = [];
 
-          if (!soundEnabled.value || !audioContext) {
-            console.warn('[updateUserBeeps] Audio not ready');
-            return;
-          }
+  if (!soundEnabled.value || !audioContext) {
+    console.warn('[updateUserBeeps] Audio not ready');
+    return;
+  }
 
-          if (audioContext.state === 'suspended') {
-            resumeAudioContext();
-            return;
-          }
+  if (audioContext.state === 'suspended') {
+    resumeAudioContext();
+    return;
+  }
 
           nearbyUsers.value.forEach(user => {
             console.log(`[updateUserBeeps] Checking user: ${user.name}, ${user.distance.toFixed(2)}m away`);
