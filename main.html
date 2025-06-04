@@ -508,6 +508,27 @@
             console.error('Poke sound error:', error);
           }
         }
+          // ADD THE NEW FUNCTION RIGHT HERE
+function playNewUserSound() {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+  
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    
+    osc.type = 'sine';
+    osc.frequency.value = 440;
+    gain.gain.value = 0.5;
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    
+    osc.connect(gain).connect(audioContext.destination);
+    
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5);
+  } catch (error) {
+    console.error('New user sound error:', error);
+  }
+}
 
         function updateUserBeeps() {
           console.log('[updateUserBeeps] Running...');
@@ -897,6 +918,7 @@
           getUserLocation();
           if (status.value === 'ONLINE') fetchNearbyUsers();
         }
+      
 
         return {
           user,
@@ -933,6 +955,10 @@
           pokeUser,
           locationStatus
         };
+      return {
+  // ... all your existing returned properties ...
+  playNewUserSound // Add this to the list
+}
       }
     }).mount('#app');
   </script>
