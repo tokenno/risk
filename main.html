@@ -234,6 +234,8 @@ button.following:hover {
         </div>
         <div class="map-controls" v-if="mapInitialized">
           <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+          <button class="secondary" @click="sharePosition">Share Position</button>
+          <button class="secondary" @click="stopSharingPosition" v-if="isSharingPosition">Stop Sharing</button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -434,6 +436,8 @@ button.following:hover {
         const followedUserLocation = ref(null);
         const groupSize = ref(0);
         const groupUsers = ref([]);
+        const isSharingPosition = ref(false);
+        const positionShareInterval = ref(null);
 
         let map = null;
         let userMarker = null;
@@ -456,6 +460,56 @@ button.following:hover {
             }
           }
         }, 200);
+
+        async function sharePosition() {
+          if (!userLocation.value) return;
+          
+          try {
+            isSharingPosition.value = true;
+            // Immediately share position
+            await db.collection('sharedPositions').doc(currentUserId.value).set({
+              userId: currentUserId.value,
+              userName: user.value,
+              latitude: userLocation.value[0],
+              longitude: userLocation.value[1],
+              timestamp: new Date().toISOString()
+            });
+            
+            // Set up interval to update position every 10 seconds
+            positionShareInterval.value = setInterval(async () => {
+              if (userLocation.value) {
+                await db.collection('sharedPositions').doc(currentUserId.value).update({
+                  latitude: userLocation.value[0],
+                  longitude: userLocation.value[1],
+                  timestamp: new Date().toISOString()
+                });
+              }
+            }, 10000);
+            
+            console.log('Started sharing position');
+          } catch (error) {
+            errorMessage.value = "Failed to share position: " + error.message;
+            isSharingPosition.value = false;
+            if (positionShareInterval.value) {
+              clearInterval(positionShareInterval.value);
+              positionShareInterval.value = null;
+            }
+          }
+        }
+
+        async function stopSharingPosition() {
+          try {
+            await db.collection('sharedPositions').doc(currentUserId.value).delete();
+            isSharingPosition.value = false;
+            if (positionShareInterval.value) {
+              clearInterval(positionShareInterval.value);
+              positionShareInterval.value = null;
+            }
+            console.log('Stopped sharing position');
+          } catch (error) {
+            errorMessage.value = "Failed to stop sharing position: " + error.message;
+          }
+        }
 
         async function sendLocation() {
           if (!selectedUser.value || !userLocation.value) return;
@@ -921,6 +975,9 @@ function updateMapLocation(location) {
             activeSoundProfiles.value = [];
             groupUsers.value = [];
             groupSize.value = 0;
+            if (isSharingPosition.value) {
+              stopSharingPosition();
+            }
           }
         });
 
@@ -1238,7 +1295,10 @@ function updateMapLocation(location) {
           groupSize,
           groupUsers,
           createGroup,
-          clearGroup
+          clearGroup,
+          sharePosition,
+          stopSharingPosition,
+          isSharingPosition
         };
       }
     }).mount('#app');
