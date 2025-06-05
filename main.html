@@ -157,12 +157,12 @@
     color: #888;
     margin-top: 5px;
   }
-  button.following {
-    background: #007bff;
-  }
-  button.following:hover {
-    background: #0056b3;
-  }
+button.following {
+  background: #007bff !important;
+}
+button.following:hover {
+  background: #0056b3 !important;
+}
   .user-list {
     display: flex;
     flex-wrap: wrap;
@@ -276,14 +276,14 @@
           <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
           <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
           <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
+<button 
+  v-if="user.id !== currentUserId" 
+  @click.stop="toggleFollow(user)"
+  :class="{ following: followedUserId === user.id }"
+  class="secondary"
+>
+  {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+</button>
         </div>
       </div>
       <div v-else>
@@ -1156,6 +1156,7 @@
           selectDistance,
           updateScale,
           pokeUser,
+             toggleFollow,
           locationStatus,
           followedUserId,
           followedUserName,
@@ -1164,7 +1165,12 @@
           groupUsers,
           createGroup,
           clearGroup
+            
         };
+      return {
+  // ... all your other properties ...
+  toggleFollow  // Add this line
+};
       }
     }).mount('#app');
   </script>
