@@ -438,6 +438,7 @@ button.following:hover {
         const groupUsers = ref([]);
         const isSharingPosition = ref(false);
         const positionShareInterval = ref(null);
+        const lastKnownUsernames = ref({}); // New ref to store last known usernames
 
         let map = null;
         let userMarker = null;
@@ -1118,6 +1119,8 @@ function updateMapLocation(location) {
           const newName = prompt('Enter new name:', user.value);
           if (newName) {
             user.value = newName;
+            // Store the new name in lastKnownUsernames
+            lastKnownUsernames.value[currentUserId.value] = newName;
             await updateUserLocation();
             if (userMarker) {
               userMarker.setIcon(L.divIcon({
@@ -1163,9 +1166,11 @@ function updateMapLocation(location) {
                 .map(doc => {
                   const data = doc.data();
                   const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+                  // Use last known username if available, otherwise use the one from Firestore
+                  const userName = lastKnownUsernames.value[doc.id] || data.name;
                   return { 
                     id: doc.id, 
-                    name: data.name, 
+                    name: userName, 
                     distance, 
                     lastSeen: data.lastSeen,
                     latitude: data.latitude,
@@ -1298,7 +1303,8 @@ function updateMapLocation(location) {
           clearGroup,
           sharePosition,
           stopSharingPosition,
-          isSharingPosition
+          isSharingPosition,
+          lastKnownUsernames
         };
       }
     }).mount('#app');
