@@ -157,12 +157,12 @@
     color: #888;
     margin-top: 5px;
   }
-button.following {
-  background: #007bff !important;
-}
-button.following:hover {
-  background: #0056b3 !important;
-}
+  button.following {
+    background: #007bff !important;
+  }
+  button.following:hover {
+    background: #0056b3 !important;
+  }
   .user-list {
     display: flex;
     flex-wrap: wrap;
@@ -176,10 +176,6 @@ button.following:hover {
   }
   .blinking-marker {
     animation: blink 2s infinite;
-  }
-  .received-location-marker {
-    animation: blink 1s infinite;
-    background-color: #ff00ff !important;
   }
   @media (max-width: 600px) {
     .container {
@@ -272,13 +268,6 @@ button.following:hover {
         :disabled="isPokeCooldown"
       >
         Poke {{ selectedUser.name }}
-      </button>
-      <button 
-        v-if="selectedUser" 
-        @click="sendLocation"
-        class="secondary"
-      >
-        Send Location to {{ selectedUser.name }}
       </button>
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
@@ -456,26 +445,6 @@ button.following:hover {
             }
           }
         }, 200);
-
-        async function sendLocation() {
-          if (!selectedUser.value || !userLocation.value) return;
-          
-          try {
-            await db.collection('users').doc(selectedUser.value.id).update({
-              receivedLocation: {
-                from: user.value,
-                fromId: currentUserId.value,
-                latitude: userLocation.value[0],
-                longitude: userLocation.value[1],
-                timestamp: new Date().toISOString()
-              }
-            });
-            console.log(`Sent location to ${selectedUser.value.name}`);
-            alert(`Location sent to ${selectedUser.value.name}`);
-          } catch (error) {
-            errorMessage.value = "Failed to send location: " + error.message;
-          }
-        }
 
         function updateScale() {
           currentScale.value = scales[currentScaleName.value];
@@ -940,24 +909,6 @@ button.following:hover {
                   alert(`You were poked by ${data.lastPoke.from}!`);
                   if (soundEnabled.value) playPokeSound();
                 }
-                if (data.receivedLocation && data.receivedLocation.fromId !== currentUserId.value) {
-                  alert(`Received location from ${data.receivedLocation.from}!
-                         Lat: ${data.receivedLocation.latitude.toFixed(6)}
-                         Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
-                  
-                  if (map) {
-                    const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
-                    L.marker(receivedLoc, {
-                      icon: L.divIcon({
-                        html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
-                        className: 'received-location-marker',
-                        iconSize: [20, 20]
-                      })
-                    }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received at ${new Date(data.receivedLocation.timestamp).toLocaleTimeString()}`);
-                    
-                    map.setView(receivedLoc, 13);
-                  }
-                }
               });
             } else {
               errorMessage.value = 'Please sign in';
@@ -1218,7 +1169,6 @@ button.following:hover {
           selectDistance,
           updateScale,
           pokeUser,
-          sendLocation,
           toggleFollow,
           locationStatus,
           followedUserId,
