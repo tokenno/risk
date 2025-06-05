@@ -169,6 +169,18 @@ button.following:hover {
     gap: 8px;
     align-items: center;
   }
+  @keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+  }
+  .blinking-marker {
+    animation: blink 2s infinite;
+  }
+  .received-location-marker {
+    animation: blink 1s infinite;
+    background-color: #ff00ff !important;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
@@ -260,6 +272,13 @@ button.following:hover {
         :disabled="isPokeCooldown"
       >
         Poke {{ selectedUser.name }}
+      </button>
+      <button 
+        v-if="selectedUser" 
+        @click="sendLocation"
+        class="secondary"
+      >
+        Send Location to {{ selectedUser.name }}
       </button>
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
@@ -437,6 +456,26 @@ button.following:hover {
             }
           }
         }, 200);
+
+        async function sendLocation() {
+          if (!selectedUser.value || !userLocation.value) return;
+          
+          try {
+            await db.collection('users').doc(selectedUser.value.id).update({
+              receivedLocation: {
+                from: user.value,
+                fromId: currentUserId.value,
+                latitude: userLocation.value[0],
+                longitude: userLocation.value[1],
+                timestamp: new Date().toISOString()
+              }
+            });
+            console.log(`Sent location to ${selectedUser.value.name}`);
+            alert(`Location sent to ${selectedUser.value.name}`);
+          } catch (error) {
+            errorMessage.value = "Failed to send location: " + error.message;
+          }
+        }
 
         function updateScale() {
           currentScale.value = scales[currentScaleName.value];
@@ -675,7 +714,7 @@ button.following:hover {
               userMarker = L.marker(location, {
                 icon: L.divIcon({
                   html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-                  className: 'user-marker',
+                  className: 'user-marker blinking-marker',
                   iconSize: [20, 20]
                 })
               }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
@@ -749,7 +788,7 @@ button.following:hover {
               selectedUserMarker = L.marker(followedUserLocation.value, {
                 icon: L.divIcon({
                   html: `<div style="background-color: #007bff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-                  className: 'followed-user-marker',
+                  className: 'followed-user-marker blinking-marker',
                   iconSize: [20, 20]
                 })
               }).addTo(map).bindPopup(`<b>${user.name}</b> (Following)<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
@@ -770,6 +809,11 @@ button.following:hover {
               selectedUserMarker = null;
             }
             if (userMarker) {
+              userMarker.setIcon(L.divIcon({
+                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+                className: 'user-marker blinking-marker',
+                iconSize: [20, 20]
+              }));
               userMarker.addTo(map).bringToFront();
             }
           }
@@ -896,6 +940,24 @@ button.following:hover {
                   alert(`You were poked by ${data.lastPoke.from}!`);
                   if (soundEnabled.value) playPokeSound();
                 }
+                if (data.receivedLocation && data.receivedLocation.fromId !== currentUserId.value) {
+                  alert(`Received location from ${data.receivedLocation.from}!
+                         Lat: ${data.receivedLocation.latitude.toFixed(6)}
+                         Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
+                  
+                  if (map) {
+                    const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
+                    L.marker(receivedLoc, {
+                      icon: L.divIcon({
+                        html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
+                        className: 'received-location-marker',
+                        iconSize: [20, 20]
+                      })
+                    }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received at ${new Date(data.receivedLocation.timestamp).toLocaleTimeString()}`);
+                    
+                    map.setView(receivedLoc, 13);
+                  }
+                }
               });
             } else {
               errorMessage.value = 'Please sign in';
@@ -992,7 +1054,7 @@ button.following:hover {
             if (userMarker) {
               userMarker.setIcon(L.divIcon({
                 html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${newName.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker',
+                className: 'user-marker blinking-marker',
                 iconSize: [20, 20]
               }));
               userMarker.bindPopup(`<b>${newName}</b><br>Your location`);
@@ -1156,7 +1218,8 @@ button.following:hover {
           selectDistance,
           updateScale,
           pokeUser,
-             toggleFollow,
+          sendLocation,
+          toggleFollow,
           locationStatus,
           followedUserId,
           followedUserName,
@@ -1165,12 +1228,7 @@ button.following:hover {
           groupUsers,
           createGroup,
           clearGroup
-            
         };
-      return {
-  // ... all your other properties ...
-  toggleFollow  // Add this line
-};
       }
     }).mount('#app');
   </script>
