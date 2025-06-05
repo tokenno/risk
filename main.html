@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -157,6 +158,19 @@
     color: #888;
     margin-top: 5px;
   }
+  /* Added styles for follow button */
+  button.following {
+    background: #007bff;
+  }
+  button.following:hover {
+    background: #0056b3;
+  }
+  .user-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
@@ -174,13 +188,15 @@
       width: 100%;
       margin-right: 0;
     }
+    .user-list {
+      flex-direction: column;
+      align-items: flex-start;
+    }
   }
 </style>
 </head>
 <body>
   <div id="app" class="container">
-
-
     <div class="section">
       <div v-if="user" class="user-info">
         <span>{{ user.charAt(0).toUpperCase() }}</span>
@@ -203,13 +219,14 @@
       <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
       <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
       <div v-else>
-        <div>Latitude: {{ userLocation[0].toFixed(6) }}</div>
-        <div>Longitude: {{ userLocation[1].toFixed(6) }}</div>
+        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
+        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
+        <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
         <div id="map">
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
         <div class="map-controls" v-if="mapInitialized">
-          <button class="secondary" @click="focusOnMyLocation">Focus on Me</button>
+          <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -250,8 +267,16 @@
         <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
         <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
         <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+        <button 
+          v-if="user.id !== currentUserId" 
+          @click.stop="toggleFollow(user)"
+          :class="{ following: followedUserId === user.id }"
+          class="secondary"
+        >
+          {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+        </button>
       </div>
-    
+    </div>
 
     <div class="section debug">
       <h3>Debug Information</h3>
@@ -277,12 +302,12 @@
       </div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
-   <div id="app" class="container">
- <div class="section audio-permission" v-if="showAudioPermission">
-  <h3>Audio Permission Required</h3>
-  <p>Please tap the button below to enable sound notifications</p>
-  <button @click="enableAudio">Enable Sound</button>
-</div>
+    <div class="section audio-permission" v-if="showAudioPermission">
+      <h3>Audio Permission Required</h3>
+      <p>Please tap the button below to enable sound notifications</p>
+      <button @click="enableAudio">Enable Sound</button>
+    </div>
+  </div>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -313,7 +338,6 @@
 
     createApp({
       setup() {
-          
         const user = ref(null);
         const status = ref('OFFLINE');
         const currentUserId = ref(null);
@@ -344,7 +368,10 @@
         const lastPokeTime = ref(0);
         const isPokeCooldown = ref(false);
         const pokeCooldownSeconds = ref(0);
-          
+        // New refs for follow feature
+        const followedUserId = ref(null);
+        const followedUserName = ref('');
+        const followedUserLocation = ref(null);
 
         let map = null;
         let userMarker = null;
@@ -376,75 +403,75 @@
           }
         }
 
-       function latLonToMidi(lat, lon) {
-  // Validate inputs
-  if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
-    console.warn('Invalid coordinates provided to latLonToMidi');
-    return 60; // Middle C as fallback
-  }
+        function latLonToMidi(lat, lon) {
+          // Validate inputs
+          if (typeof lat !== 'number' || typeof lon !== 'number' || isNaN(lat) || isNaN(lon)) {
+            console.warn('Invalid coordinates provided to latLonToMidi');
+            return 60; // Middle C as fallback
+          }
 
-  // Normalize coordinates to safe ranges
-  const safeLat = Math.max(-90, Math.min(90, lat));
-  const safeLon = Math.max(-180, Math.min(180, lon));
+          // Normalize coordinates to safe ranges
+          const safeLat = Math.max(-90, Math.min(90, lat));
+          const safeLon = Math.max(-180, Math.min(180, lon));
 
-  // Calculate scale degree (0 to scale length-1)
-  const normLat = (safeLat + 90) / 180; // 0 to 1
-  const degreeIndex = Math.floor(normLat * currentScale.value.length) % currentScale.value.length;
+          // Calculate scale degree (0 to scale length-1)
+          const normLat = (safeLat + 90) / 180; // 0 to 1
+          const degreeIndex = Math.floor(normLat * currentScale.value.length) % currentScale.value.length;
 
-  // Calculate octave (0 to 2)
-  const normLon = (safeLon + 180) / 360; // 0 to 1
-  const octave = Math.min(2, Math.floor(normLon * 3)); // Limit to 0-2 octaves
+          // Calculate octave (0 to 2)
+          const normLon = (safeLon + 180) / 360; // 0 to 1
+          const octave = Math.min(2, Math.floor(normLon * 3)); // Limit to 0-2 octaves
 
-  // Calculate final MIDI note
-  const midiNote = rootNote + currentScale.value[degreeIndex] + (12 * octave);
-  
-  // Final validation
-  if (midiNote < 0 || midiNote > 127 || !Number.isInteger(midiNote)) {
-    console.warn(`Calculated invalid MIDI note: ${midiNote} from lat ${lat}, lon ${lon}`);
-    return 60; // Middle C as fallback
-  }
+          // Calculate final MIDI note
+          const midiNote = rootNote + currentScale.value[degreeIndex] + (12 * octave);
+          
+          // Final validation
+          if (midiNote < 0 || midiNote > 127 || !Number.isInteger(midiNote)) {
+            console.warn(`Calculated invalid MIDI note: ${midiNote} from lat ${lat}, lon ${lon}`);
+            return 60; // Middle C as fallback
+          }
 
-  return midiNote;
-}
+          return midiNote;
+        }
 
-       function initAudio() {
-  // Don't initialize immediately - wait for user interaction
-  audioState.value = 'Waiting for user interaction';
-}
+        function initAudio() {
+          // Don't initialize immediately - wait for user interaction
+          audioState.value = 'Waiting for user interaction';
+        }
 
-function enableAudio() {
-  if (!audioContext) {
-    try {
-      audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      audioState.value = 'Initialized (suspended)';
-    } catch (error) {
-      console.error('AudioContext error:', error);
-      audioState.value = 'Initialization failed';
-      return;
-    }
-  }
-  
-  // Resume the context (this must happen after user interaction)
-  audioContext.resume().then(() => {
-    console.log('AudioContext resumed successfully');
-    audioState.value = 'Running';
-    showAudioPermission.value = false;
-    if (soundEnabled.value) {
-      updateUserBeeps();
-    }
-  }).catch(error => {
-    console.error('Failed to resume AudioContext:', error);
-    audioState.value = 'Resume failed';
-  });
-  
-  // Play a silent sound to warm up the audio context
-  const buffer = audioContext.createBuffer(1, 1, 22050);
-  const source = audioContext.createBufferSource();
-  source.buffer = buffer;
-  source.connect(audioContext.destination);
-  source.start(0);
-  source.stop(audioContext.currentTime + 0.1);
-}
+        function enableAudio() {
+          if (!audioContext) {
+            try {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+              audioState.value = 'Initialized (suspended)';
+            } catch (error) {
+              console.error('AudioContext error:', error);
+              audioState.value = 'Initialization failed';
+              return;
+            }
+          }
+          
+          // Resume the context (this must happen after user interaction)
+          audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+            audioState.value = 'Running';
+            showAudioPermission.value = false;
+            if (soundEnabled.value) {
+              updateUserBeeps();
+            }
+          }).catch(error => {
+            console.error('Failed to resume AudioContext:', error);
+            audioState.value = 'Resume failed';
+          });
+          
+          // Play a silent sound to warm up the audio context
+          const buffer = audioContext.createBuffer(1, 1, 22050);
+          const source = audioContext.createBufferSource();
+          source.buffer = buffer;
+          source.connect(audioContext.destination);
+          source.start(0);
+          source.stop(audioContext.currentTime + 0.1);
+        }
 
         function resumeAudioContext() {
           if (audioContext && audioContext.state === 'suspended') {
@@ -462,7 +489,6 @@ function enableAudio() {
           }
         }
 
-     
         function generateSoundProfile(userId, userName) {
           const frequency = Math.floor(Math.random() * (2000 - 400 + 1)) + 400;
           const bpm = Math.floor(Math.random() * (120 - 60 + 1)) + 60;
@@ -483,58 +509,58 @@ function enableAudio() {
           return profile;
         }
 
-   function playBeep(profile, distance) {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
-    console.warn('playBeep skipped — audio not ready');
-    return;
-  }
+        function playBeep(profile, distance) {
+          if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') {
+            console.warn('playBeep skipped — audio not ready');
+            return;
+          }
 
-  // Convert GPS to musical note with validation
-  const midiNote = latLonToMidi(profile.latitude, profile.longitude);
-  let frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
-  
-  // Validate frequency range
-  frequency = Math.max(20, Math.min(20000, frequency)); // Limit to human hearing range
-  if (isNaN(frequency) || !isFinite(frequency)) {
-    console.warn('Invalid frequency calculated, using default');
-    frequency = 440; // Fallback to A4
-  }
+          // Convert GPS to musical note with validation
+          const midiNote = latLonToMidi(profile.latitude, profile.longitude);
+          let frequency = 440 * Math.pow(2, (midiNote - 69) / 12);
+          
+          // Validate frequency range
+          frequency = Math.max(20, Math.min(20000, frequency)); // Limit to human hearing range
+          if (isNaN(frequency) || !isFinite(frequency)) {
+            console.warn('Invalid frequency calculated, using default');
+            frequency = 440; // Fallback to A4
+          }
 
-  // Validate gain value
-  let gainValue = 0.2 * (1 - distance / 5000);
-  gainValue = Math.max(0, Math.min(1, gainValue)); // Clamp between 0 and 1
+          // Validate gain value
+          let gainValue = 0.2 * (1 - distance / 5000);
+          gainValue = Math.max(0, Math.min(1, gainValue)); // Clamp between 0 and 1
 
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    const panner = audioContext.createStereoPanner();
+          try {
+            const osc = audioContext.createOscillator();
+            const gain = audioContext.createGain();
+            const panner = audioContext.createStereoPanner();
 
-    osc.type = profile.waveType || 'sine';
-    osc.frequency.value = frequency;
-    gain.gain.value = gainValue;
-    panner.pan.value = profile.pan || 0;
+            osc.type = profile.waveType || 'sine';
+            osc.frequency.value = frequency;
+            gain.gain.value = gainValue;
+            panner.pan.value = profile.pan || 0;
 
-    osc.connect(gain).connect(panner).connect(audioContext.destination);
+            osc.connect(gain).connect(panner).connect(audioContext.destination);
 
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.5);
+            osc.start();
+            osc.stop(audioContext.currentTime + 0.5);
 
-    // Update debug info
-    const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
-    if (existingProfileIndex >= 0) {
-      activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
-    } else {
-      activeSoundProfiles.value.push({
-        id: profile.id,
-        name: profile.name,
-        frequency: frequency,
-        bpm: profile.bpm
-      });
-    }
-  } catch (error) {
-    console.error('Audio playback error:', error);
-  }
-}
+            // Update debug info
+            const existingProfileIndex = activeSoundProfiles.value.findIndex(p => p.id === profile.id);
+            if (existingProfileIndex >= 0) {
+              activeSoundProfiles.value[existingProfileIndex].frequency = frequency;
+            } else {
+              activeSoundProfiles.value.push({
+                id: profile.id,
+                name: profile.name,
+                frequency: frequency,
+                bpm: profile.bpm
+              });
+            }
+          } catch (error) {
+            console.error('Audio playback error:', error);
+          }
+        }
 
         function playPokeSound() {
           if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
@@ -581,23 +607,23 @@ function enableAudio() {
           }
         }
 
-       function updateUserBeeps() {
-  console.log('[updateUserBeeps] Running...');
-  userBeepIntervals.forEach((interval, userId) => {
-    clearInterval(interval);
-    userBeepIntervals.delete(userId);
-  });
-  activeSoundProfiles.value = [];
+        function updateUserBeeps() {
+          console.log('[updateUserBeeps] Running...');
+          userBeepIntervals.forEach((interval, userId) => {
+            clearInterval(interval);
+            userBeepIntervals.delete(userId);
+          });
+          activeSoundProfiles.value = [];
 
-  if (!soundEnabled.value || !audioContext) {
-    console.warn('[updateUserBeeps] Audio not ready');
-    return;
-  }
+          if (!soundEnabled.value || !audioContext) {
+            console.warn('[updateUserBeeps] Audio not ready');
+            return;
+          }
 
-  if (audioContext.state === 'suspended') {
-    resumeAudioContext();
-    return;
-  }
+          if (audioContext.state === 'suspended') {
+            resumeAudioContext();
+            return;
+          }
 
           nearbyUsers.value.forEach(user => {
             console.log(`[updateUserBeeps] Checking user: ${user.name}, ${user.distance.toFixed(2)}m away`);
@@ -614,27 +640,27 @@ function enableAudio() {
           });
         }
 
-   function toggleSound() {
-  soundEnabled.value = !soundEnabled.value;
-  
-  if (soundEnabled.value) {
-    // When enabling sound, ensure we have user interaction
-    if (!audioContext) {
-      enableAudio();
-    } else if (audioContext.state === 'suspended') {
-      audioContext.resume().then(() => {
-        updateUserBeeps();
-      });
-    } else {
-      updateUserBeeps();
-    }
-  } else {
-    // When disabling sound, clear everything
-    userBeepIntervals.forEach(interval => clearInterval(interval));
-    userBeepIntervals.clear();
-    activeSoundProfiles.value = [];
-  }
-}
+        function toggleSound() {
+          soundEnabled.value = !soundEnabled.value;
+          
+          if (soundEnabled.value) {
+            // When enabling sound, ensure we have user interaction
+            if (!audioContext) {
+              enableAudio();
+            } else if (audioContext.state === 'suspended') {
+              audioContext.resume().then(() => {
+                updateUserBeeps();
+              });
+            } else {
+              updateUserBeeps();
+            }
+          } else {
+            // When disabling sound, clear everything
+            userBeepIntervals.forEach(interval => clearInterval(interval));
+            userBeepIntervals.clear();
+            activeSoundProfiles.value = [];
+          }
+        }
 
         setInterval(() => {
           if (audioContext && audioContext.state === 'suspended') {
@@ -675,7 +701,9 @@ function enableAudio() {
 
         function updateMapLocation(location) {
           if (map) {
-            map.setView(location, 13);
+            if (!followedUserId.value) {
+              map.setView(location, 13);
+            }
             if (userMarker) {
               userMarker.setLatLng(location);
             }
@@ -704,17 +732,59 @@ function enableAudio() {
               })
             }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
             
-            map.setView([user.latitude, user.longitude], 13);
+            if (!followedUserId.value) {
+              map.setView([user.latitude, user.longitude], 13);
+            }
           }
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
           }
         }
 
+        function toggleFollow(user) {
+          if (followedUserId.value === user.id) {
+            // Unfollow: reset to current user's location
+            followedUserId.value = null;
+            followedUserName.value = '';
+            followedUserLocation.value = null;
+            if (map && userLocation.value) {
+              map.setView(userLocation.value, 13);
+              if (selectedUserMarker) {
+                map.removeLayer(selectedUserMarker);
+                selectedUserMarker = null;
+              }
+              selectedUser.value = null;
+            }
+          } else {
+            // Follow: lock map to selected user's location
+            followedUserId.value = user.id;
+            followedUserName.value = user.name;
+            followedUserLocation.value = [user.latitude, user.longitude];
+            if (map && followedUserLocation.value) {
+              map.setView(followedUserLocation.value, 13);
+              // Update selected user marker to indicate following
+              if (selectedUserMarker) {
+                map.removeLayer(selectedUserMarker);
+              }
+              selectedUserMarker = L.marker(followedUserLocation.value, {
+                icon: L.divIcon({
+                  html: `<div style="background-color: #007bff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+                  className: 'followed-user-marker',
+                  iconSize: [20, 20]
+                })
+              }).addTo(map).bindPopup(`<b>${user.name}</b> (Following)<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
+            }
+          }
+          updateNearbyMarkers();
+        }
+
         function focusOnMyLocation() {
           if (map && userLocation.value) {
             map.setView(userLocation.value, 13);
             selectedUser.value = null;
+            followedUserId.value = null;
+            followedUserName.value = '';
+            followedUserLocation.value = null;
             
             if (selectedUserMarker) {
               map.removeLayer(selectedUserMarker);
@@ -727,6 +797,36 @@ function enableAudio() {
           }
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
+          }
+          updateNearbyMarkers();
+        }
+
+        function updateNearbyMarkers() {
+          if (!map) return;
+          nearbyMarkers.forEach(marker => map.removeLayer(marker));
+          nearbyMarkers = nearbyUsers.value.filter(u => u.status === 'ONLINE').map((user, index) => {
+            const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
+            return L.marker([user.latitude, user.longitude], {
+              icon: L.divIcon({
+                html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+                className: 'user-marker',
+                iconSize: [20, 20]
+              })
+            }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
+          });
+          // Clear follow if user is no longer online
+          if (followedUserId.value && !nearbyUsers.value.find(u => u.id === followedUserId.value && u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)) {
+            followedUserId.value = null;
+            followedUserName.value = '';
+            followedUserLocation.value = null;
+            if (map && userLocation.value) {
+              map.setView(userLocation.value, 13);
+            }
+            if (selectedUserMarker) {
+              map.removeLayer(selectedUserMarker);
+              selectedUserMarker = null;
+            }
+            selectedUser.value = null;
           }
         }
 
@@ -757,19 +857,7 @@ function enableAudio() {
         }, { immediate: true });
 
         watch(nearbyUsers, (newUsers) => {
-          if (map) {
-            nearbyMarkers.forEach(marker => map.removeLayer(marker));
-            nearbyMarkers = newUsers.filter(u => u.status === 'ONLINE').map((user, index) => {
-              const color = colors[index % colors.length];
-              return L.marker([user.latitude, user.longitude], {
-                icon: L.divIcon({
-                  html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-                  className: 'user-marker',
-                  iconSize: [20, 20]
-                })
-              }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-            });
-          }
+          updateNearbyMarkers();
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
           }
@@ -918,94 +1006,93 @@ function enableAudio() {
           return R * c;
         }
 
-    async function fetchNearbyUsers() {
-  if (!userLocation.value) {
-    errorMessage.value = 'Location not available';
-    return;
-  }
-  
-  nearbyUsers.value = [];
-  loadingNearby.value = true;
-  
-  const q = db.collection('users').where('status', '==', 'ONLINE');
-  
-  q.onSnapshot((snapshot) => {
-    const currentUsers = snapshot.docs
-      .filter(doc => {
-        // Validate user data before processing
-        const data = doc.data();
-        return doc.id !== currentUserId.value && 
-               isValidCoordinate(data.latitude) && 
-               isValidCoordinate(data.longitude);
-      })
-      .map(doc => {
-        const data = doc.data();
-        const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-        return { 
-          id: doc.id, 
-          name: data.name, 
-          distance, 
-          lastSeen: data.lastSeen,
-          latitude: data.latitude,
-          longitude: data.longitude,
-          status: data.status
-        };
-      })
-      .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE');
+        async function fetchNearbyUsers() {
+          if (!userLocation.value) {
+            errorMessage.value = 'Location not available';
+            return;
+          }
+          
+          nearbyUsers.value = [];
+          loadingNearby.value = true;
+          
+          const q = db.collection('users').where('status', '==', 'ONLINE');
+          
+          q.onSnapshot((snapshot) => {
+            const currentUsers = snapshot.docs
+              .filter(doc => {
+                // Validate user data before processing
+                const data = doc.data();
+                return doc.id !== currentUserId.value && 
+                       isValidCoordinate(data.latitude) && 
+                       isValidCoordinate(data.longitude);
+              })
+              .map(doc => {
+                const data = doc.data();
+                const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+                return { 
+                  id: doc.id, 
+                  name: data.name, 
+                  distance, 
+                  lastSeen: data.lastSeen,
+                  latitude: data.latitude,
+                  longitude: data.longitude,
+                  status: data.status
+                };
+              })
+              .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE');
 
-    nearbyUsers.value = currentUsers;
-    loadingNearby.value = false;
-    
-    // ... rest of your existing code ...
-  }, (error) => {
-    errorMessage.value = 'Failed to load nearby users: ' + error.message;
-    loadingNearby.value = false;
-  });
-}
+            nearbyUsers.value = currentUsers;
+            loadingNearby.value = false;
+          }, (error) => {
+            errorMessage.value = 'Failed to load nearby users: ' + error.message;
+            loadingNearby.value = false;
+          });
+        }
       
-      //Clean up invalid data in Firebase
-async function cleanInvalidUserLocations() {
-  const snapshot = await db.collection('users').get();
-  const batch = db.batch();
-  
-  snapshot.forEach(doc => {
-    const data = doc.data();
-    if (!isValidCoordinate(data.latitude) || !isValidCoordinate(data.longitude)) {
-      console.log('Cleaning invalid location for user:', doc.id, data.name);
-      batch.update(doc.ref, {
-        latitude: 0,  // Default valid location
-        longitude: 0  // Default valid location
-      });
-    }
-  });
-  
-  await batch.commit();
-  console.log('Finished cleaning invalid locations');
-}
-      // . Update your user data processing to handle invalid locations:
-      function processUserData(userData) {
-  // Ensure we have valid data
-  if (!userData || !isValidCoordinate(userData.latitude) || !isValidCoordinate(userData.longitude)) {
-    console.warn('Invalid user location data:', userData);
-    return null;
-  }
-  
-  return {
-    id: userData.id,
-    name: userData.name || 'Anonymous',
-    latitude: userData.latitude,
-    longitude: userData.longitude,
-    // ... other fields ...
-  };
-}
+        //Clean up invalid data in Firebase
+        async function cleanInvalidUserLocations() {
+          const snapshot = await db.collection('users').get();
+          const batch = db.batch();
+          
+          snapshot.forEach(doc => {
+            const data = doc.data();
+            if (!isValidCoordinate(data.latitude) || !isValidCoordinate(data.longitude)) {
+              console.log('Cleaning invalid location for user:', doc.id, data.name);
+              batch.update(doc.ref, {
+                latitude: 0,  // Default valid location
+                longitude: 0  // Default valid location
+              });
+            }
+          });
+          
+          await batch.commit();
+          console.log('Finished cleaning invalid locations');
+        }
       
-// Helper function to validate coordinates
-function isValidCoordinate(coord) {
-  return typeof coord === 'number' && 
-         !isNaN(coord) && 
-         isFinite(coord) &&
-         (Math.abs(coord) <= 180); // Valid for both latitude and longitude
-}
+        // . Update your user data processing to handle invalid locations:
+        function processUserData(userData) {
+          // Ensure we have valid data
+          if (!userData || !isValidCoordinate(userData.latitude) || !isValidCoordinate(userData.longitude)) {
+            console.warn('Invalid user location data:', userData);
+            return null;
+          }
+          
+          return {
+            id: userData.id,
+            name: userData.name || 'Anonymous',
+            latitude: userData.latitude,
+            longitude: userData.longitude,
+            // ... other fields ...
+          };
+        }
+      
+        // Helper function to validate coordinates
+        function isValidCoordinate(coord) {
+          return typeof coord === 'number' && 
+                 !isNaN(coord) && 
+                 isFinite(coord) &&
+                 (Math.abs(coord) <= 180); // Valid for both latitude and longitude
+        }
 
         function formatRelativeTime(timestamp) {
           const now = new Date();
@@ -1066,10 +1153,15 @@ function isValidCoordinate(coord) {
           selectDistance,
           updateScale,
           pokeUser,
-          locationStatus
+          locationStatus,
+          followedUserId,
+          followedUserName,
+          followedUserLocation,
+          toggleFollow
         };
       }
     }).mount('#app');
   </script>
 </body>
 </html>
+```
