@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FCK DOT</title>
+  <title>SlySpot App</title>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -26,6 +26,8 @@
     border-radius: 6px;
     padding: 15px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    position: relative;
+    overflow: hidden;
   }
   .section {
     margin-bottom: 15px;
@@ -200,10 +202,146 @@ button.following:hover {
       align-items: flex-start;
     }
   }
+
+  /* New Help Panel Styles */
+  .help-panel {
+    position: fixed;
+    top: 0;
+    right: -350px;
+    width: 350px;
+    height: 100%;
+    background-color: #2c2c2c;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    transition: right 0.3s ease;
+    padding: 20px;
+    overflow-y: auto;
+    color: #e0e0e0;
+  }
+  
+  .help-panel.open {
+    right: 0;
+  }
+  
+  .help-panel h3 {
+    color: #fff;
+    margin-top: 0;
+    border-bottom: 1px solid #444;
+    padding-bottom: 10px;
+  }
+  
+  .help-panel p {
+    margin-bottom: 15px;
+    line-height: 1.5;
+  }
+  
+  .help-panel ul {
+    padding-left: 20px;
+    margin-bottom: 15px;
+  }
+  
+  .help-panel li {
+    margin-bottom: 8px;
+  }
+  
+  .help-panel button.close-help {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: #dc3545;
+    border: none;
+    color: white;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  
+  .help-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    display: none;
+  }
+  
+  .help-overlay.visible {
+    display: block;
+  }
+  
+  @media (max-width: 600px) {
+    .help-panel {
+      width: 100%;
+      right: -100%;
+    }
+    
+    .help-panel.open {
+      right: 0;
+    }
+  }
 </style>
 </head>
 <body>
   <div id="app" class="container">
+    <!-- Help Panel -->
+    <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
+    <div class="help-panel" :class="{ open: showHelp }">
+      <button class="close-help" @click="toggleHelp">×</button>
+      <h3>SlySpot App </h3>
+      <p>Welcome to SlySpot! A sleek, location-based social networking app, capturing the essence of connecting with nearby users in a discreet way.<br>Spot the Vibe, Stay Sly. </p>
+      
+      <h3>Basic Functions</h3>
+      <ul>
+        <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
+        <li><strong>Change Name:</strong> Update your display name.</li>
+        <li><strong>Sound On/Off:</strong> Toggle audio notifications.</li>
+        <li><strong>Help:</strong> Show/hide this help panel.</li>
+      </ul>
+      
+      <h3>Map Controls</h3>
+      <ul>
+        <li><strong>Focus on Me:</strong> Center the map on your location.</li>
+        <li><strong>Share Position:</strong> Continuously share your location.</li>
+        <li><strong>Stop Sharing:</strong> Stop sharing your location.</li>
+      </ul>
+      
+      <h3>User Interactions</h3>
+      <ul>
+        <li><strong>Follow:</strong> Track another user's location.</li>
+        <li><strong>Poke:</strong> Send a notification to another user.</li>
+        <li><strong>Send Location:</strong> Share your current location once.</li>
+      </ul>
+      
+      <h3>Groups</h3>
+      <ul>
+        <li>Create temporary groups of nearby users.</li>
+        <li>Select group size from the dropdown.</li>
+        <li>Clear group to return to seeing all users.</li>
+      </ul>
+      
+      <h3>Audio Features</h3>
+      <ul>
+        <li>Each nearby user has a unique sound signature.</li>
+        <li>Sounds change based on distance and direction.</li>
+        <li>Toggle between different musical scales.</li>
+      </ul>
+              <h3>Scenarios</h3>
+      <ul>
+        <li>Social Events: Share your location, follow friends and use the map to navigate to their position.</li>
+        <li>Group Activities: You’re organizing a scavenger hunt with a group of 5 players.</li>
+        <li>Safety and Coordination: You’re hiking with friends and want to ensure no one gets lost.</li>
+            <li>Casual Meetups: You’re in a new city and want to connect with nearby users.</li>
+            <li>Nightlife Connections: At a club, use SlySpot to spot nearby users, send a poke to spark a conversation. </li>
+    
+      </ul>
+    </div>
+
     <div class="section">
       <div v-if="user" class="user-info">
         <span>{{ user.charAt(0).toUpperCase() }}</span>
@@ -219,6 +357,7 @@ button.following:hover {
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
+      <button @click="toggleHelp" class="secondary">Help</button>
     </div>
 
     <div class="section">
@@ -438,7 +577,8 @@ button.following:hover {
         const groupUsers = ref([]);
         const isSharingPosition = ref(false);
         const positionShareInterval = ref(null);
-        const lastKnownUsernames = ref({}); // New ref to store last known usernames
+        const lastKnownUsernames = ref({});
+        const showHelp = ref(false);
 
         let map = null;
         let userMarker = null;
@@ -462,12 +602,15 @@ button.following:hover {
           }
         }, 200);
 
+        function toggleHelp() {
+          showHelp.value = !showHelp.value;
+        }
+
         async function sharePosition() {
           if (!userLocation.value) return;
           
           try {
             isSharingPosition.value = true;
-            // Immediately share position
             await db.collection('sharedPositions').doc(currentUserId.value).set({
               userId: currentUserId.value,
               userName: user.value,
@@ -476,7 +619,6 @@ button.following:hover {
               timestamp: new Date().toISOString()
             });
             
-            // Set up interval to update position every 10 seconds
             positionShareInterval.value = setInterval(async () => {
               if (userLocation.value) {
                 await db.collection('sharedPositions').doc(currentUserId.value).update({
@@ -761,10 +903,10 @@ function initMap(location) {
       if (!document.getElementById('map')) {
         throw new Error('Map container not found');
       }
-      map = L.map('map').setView(location, 18); // Start zoomed in
+      map = L.map('map').setView(location, 18);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19 // Increased max zoom level
+        maxZoom: 19
       }).addTo(map);
       userMarker = L.marker(location, {
         icon: L.divIcon({
@@ -783,7 +925,7 @@ function initMap(location) {
 function updateMapLocation(location) {
   if (map) {
     if (!followedUserId.value) {
-      map.setView(location, map.getZoom()); // Keep current zoom level
+      map.setView(location, map.getZoom());
     }
     if (userMarker) {
       userMarker.setLatLng(location);
@@ -810,7 +952,6 @@ function updateMapLocation(location) {
       })
     }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
     
-    // Zoom in to the selected user (zoom level 18 for street-level)
     map.setView([user.latitude, user.longitude], 18);
   }
   if (soundEnabled.value && audioContext && audioContext.state === 'running') {
@@ -824,7 +965,6 @@ function updateMapLocation(location) {
     followedUserName.value = '';
     followedUserLocation.value = null;
     if (map && userLocation.value) {
-      // Zoom back to your location when unfollowing
       map.setView(userLocation.value, 18);
       if (selectedUserMarker) {
         map.removeLayer(selectedUserMarker);
@@ -837,7 +977,6 @@ function updateMapLocation(location) {
     followedUserName.value = user.name;
     followedUserLocation.value = [user.latitude, user.longitude];
     if (map && followedUserLocation.value) {
-      // Zoom in to the followed user
       map.setView(followedUserLocation.value, 18);
       if (selectedUserMarker) {
         map.removeLayer(selectedUserMarker);
@@ -856,7 +995,6 @@ function updateMapLocation(location) {
 
     function focusOnMyLocation() {
   if (map && userLocation.value) {
-    // Zoom in to your location
     map.setView(userLocation.value, 18);
     selectedUser.value = null;
     followedUserId.value = null;
@@ -1059,9 +1197,8 @@ function updateMapLocation(location) {
       errorMessage.value = '';
       updateUserLocation();
       
-      // Add this block to zoom in immediately
       if (map) {
-        map.setView(userLocation.value, 18); // Zoom to street level
+        map.setView(userLocation.value, 18);
       } else {
         initMap(userLocation.value);
       }
@@ -1119,7 +1256,6 @@ function updateMapLocation(location) {
           const newName = prompt('Enter new name:', user.value);
           if (newName) {
             user.value = newName;
-            // Store the new name in lastKnownUsernames
             lastKnownUsernames.value[currentUserId.value] = newName;
             await updateUserLocation();
             if (userMarker) {
@@ -1166,7 +1302,6 @@ function updateMapLocation(location) {
                 .map(doc => {
                   const data = doc.data();
                   const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                  // Use last known username if available, otherwise use the one from Firestore
                   const userName = lastKnownUsernames.value[doc.id] || data.name;
                   return { 
                     id: doc.id, 
@@ -1304,7 +1439,9 @@ function updateMapLocation(location) {
           sharePosition,
           stopSharingPosition,
           isSharingPosition,
-          lastKnownUsernames
+          lastKnownUsernames,
+          showHelp,
+          toggleHelp
         };
       }
     }).mount('#app');
