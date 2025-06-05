@@ -373,8 +373,7 @@ button.following:hover {
         </div>
         <div class="map-controls" v-if="mapInitialized">
           <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-          <button class="secondary" @click="sharePosition">Share Position</button>
-          <button class="secondary" @click="stopSharingPosition" v-if="isSharingPosition">Stop Sharing</button>
+     
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
