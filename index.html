@@ -222,7 +222,7 @@
     color: #fff;
     margin-top: 0;
     border-bottom: 1px solid #444;
-    padding-bottom: 10px;
+    padding-bottom: 20px;
   }
   .help-panel p {
     margin-bottom: 15px;
@@ -372,8 +372,11 @@
         <li>Safety and Coordination: You’re hiking with friends and want to ensure no one gets lost.</li>
         <li>Casual Meetups: You’re in a new city and want to connect with nearby users.</li>
         <li>Nightlife Connections: At a club or a party, use Sly to spot nearby users.</li>
+        
       </ul>
+       
     </div>
+  
 
 <div class="section">
   <div style="display: flex; align-items: center; gap: 12px;">
@@ -1264,10 +1267,14 @@ function toggleDebugPanel() {
               getUserLocation();
               db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
                 const data = doc.data();
-                if (data.lastPoke && data.lastPoke.fromId !== currentUserId.value) {
-                  alert(`You were poked by ${data.lastPoke.from}!`);
-                  if (soundEnabled.value) playPokeSound();
-                }
+              if (
+  status.value === 'ONLINE' &&
+  data.lastPoke &&
+  data.lastPoke.fromId !== currentUserId.value
+) {
+  alert(`You were poked by ${data.lastPoke.from}!`);
+  if (soundEnabled.value) playPokeSound();
+}
                 if (data.receivedLocation && data.receivedLocation.fromId !== currentUserId.value) {
                   alert(`Received location from ${data.receivedLocation.from}!
                          Lat: ${data.receivedLocation.latitude.toFixed(6)}
