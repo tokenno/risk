@@ -370,6 +370,24 @@
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </div>
+      
+      <div class="section" v-if="groupUsers.length > 0">
+  <h3>Group Alerts</h3>
+  <div class="button-group">
+    <button @click="enableGroupAlerts = !enableGroupAlerts" :class="{ active: enableGroupAlerts }">
+      {{ enableGroupAlerts ? 'Disable Alerts' : 'Enable Alerts' }}
+    </button>
+    <input 
+      type="number" 
+      v-model="groupAlertDistance" 
+      min="10" 
+      max="10000" 
+      placeholder="Distance (meters)"
+      :disabled="!enableGroupAlerts"
+    >
+  </div>
+  <div v-if="groupAlertMessage" class="error">{{ groupAlertMessage }}</div>
+</div>
 
     <div class="section">
       <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
@@ -571,7 +589,11 @@
         const lastKnownUsernames = ref({});
         const showHelp = ref(false);
         const selectedUsersForGroup = ref([]);
-
+const enableGroupAlerts = ref(false);
+const groupAlertDistance = ref(100); // default 100 meters
+const groupAlertMessage = ref('');
+const lastAlertTimes = ref({});
+const groupAlertCheckInterval = ref(null);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
@@ -631,6 +653,60 @@
             }
           }
         }
+          
+          /// watch group users
+          
+          watch([groupUsers, enableGroupAlerts, userLocation], ([newGroupUsers, newEnableAlerts, newUserLocation]) => {
+  if (groupAlertCheckInterval.value) {
+    clearInterval(groupAlertCheckInterval.value);
+    groupAlertCheckInterval.value = null;
+  }
+  
+  if (newEnableAlerts && newGroupUsers.length > 0 && newUserLocation) {
+    groupAlertCheckInterval.value = setInterval(checkGroupDistances, 5000);
+  }
+}, { immediate: true });
+          
+          function checkGroupDistances() {
+  if (!enableGroupAlerts.value || !userLocation.value || groupUsers.value.length === 0) return;
+  
+  const now = Date.now();
+  groupUsers.value.forEach(user => {
+    const distance = calculateDistance(userLocation.value, [user.latitude, user.longitude]);
+    
+    if (distance > groupAlertDistance.value) {
+      // Only alert once per minute per user
+      if (!lastAlertTimes.value[user.id] || (now - lastAlertTimes.value[user.id]) > 60000) {
+        groupAlertMessage.value = `${user.name} is now ${distance < 1000 ? distance.toFixed(0) + 'm' : (distance/1000).toFixed(1) + 'km'} away!`;
+        alert(groupAlertMessage.value);
+        lastAlertTimes.value[user.id] = now;
+        
+        // Play alert sound if enabled
+        if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+          playAlertSound();
+        }
+      }
+    }
+  });
+}
+
+function playAlertSound() {
+  if (!audioContext || audioContext.state !== 'running') return;
+  
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 800;
+    gain.gain.value = 0.5;
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.0);
+    osc.connect(gain).connect(audioContext.destination);
+    osc.start();
+    osc.stop(audioContext.currentTime + 1.0);
+  } catch (error) {
+    console.error('Alert sound error:', error);
+  }
+}
 
         async function stopSharingPosition() {
           try {
@@ -1265,6 +1341,11 @@
             if (userLocation.value) {
               fetchNearbyUsers();
             }
+              if (groupAlertCheckInterval.value) {
+  clearInterval(groupAlertCheckInterval.value);
+  groupAlertCheckInterval.value = null;
+}
+              
             
             if (soundEnabled.value && audioContext && audioContext.state === 'running') {
               updateUserBeeps();
@@ -1442,6 +1523,10 @@
         return {
           user,
           status,
+            enableGroupAlerts,
+            groupAlertDistance,
+            groupAlertMessage,
+            checkGroupDistances,
           currentUserId,
           userLocation,
           lastLocationUpdate,
@@ -1488,6 +1573,7 @@
           showHelp,
           toggleHelp,
           selectedUsersForGroup
+      
         };
       }
     }).mount('#app');
