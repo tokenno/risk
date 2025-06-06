@@ -282,6 +282,46 @@
     cursor: not-allowed;
     opacity: 0.5;
   }
+    .debug-panel {
+  position: absolute;
+  bottom: -300px;
+  left: 0;
+  width: 100%;
+  background-color: #2c2c2c;
+  z-index: 1000;
+  transition: bottom 0.3s ease;
+  padding: 20px;
+  border-top: 1px solid #444;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.debug-panel.open {
+  bottom: 0;
+}
+
+.close-debug {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #dc3545;
+  border: none;
+  color: white;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .debug-panel {
+    padding: 15px;
+  }
+}
 </style>
 </head>
 <body>
@@ -379,6 +419,7 @@
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
+        <button @click="toggleDebugPanel" class="secondary">Debug</button>
       <button @click="toggleHelp" class="secondary">Help</button>
     </div>
 
@@ -496,31 +537,31 @@
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </div>
 
-    <div class="section debug">
-      <h3>Debug Information</h3>
-      <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-      <div>User ID: {{ currentUserId || 'Not set' }}</div>
-      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
-      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
-      <div v-if="activeSoundProfiles.length > 0">
-        Active sounds: 
-        <span v-for="profile in activeSoundProfiles" :key="profile.id">
-          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
-        </span>
-      </div>
-      <div>Audio State: {{ audioState }}</div>
-      <div>
-        Musical Scale: 
-        <select v-model="currentScaleName" @change="updateScale">
-          <option value="pentatonic">Pentatonic</option>
-          <option value="major">Major</option>
-          <option value="minor">Minor</option>
-          <option value="chromatic">Chromatic</option>
-        </select>
-      </div>
-      <button @click="forceRefresh">Force Refresh</button>
-    </div>
+ <div class="debug-panel" :class="{ open: showDebugPanel }">
+  <button class="close-debug" @click="toggleDebugPanel">×</button>
+  <h3>Debug Information</h3>
+  <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
+  <div>User ID: {{ currentUserId || 'Not set' }}</div>
+  <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
+  <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+  <div v-if="activeSoundProfiles.length > 0">
+    Active sounds: 
+    <span v-for="profile in activeSoundProfiles" :key="profile.id">
+      {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
+    </span>
   </div>
+  <div>Audio State: {{ audioState }}</div>
+  <div>
+    Musical Scale: 
+    <select v-model="currentScaleName" @change="updateScale">
+      <option value="pentatonic">Pentatonic</option>
+      <option value="major">Major</option>
+      <option value="minor">Minor</option>
+      <option value="chromatic">Chromatic</option>
+    </select>
+  </div>
+  <button @click="forceRefresh">Force Refresh</button>
+</div>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -614,6 +655,12 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+          
+          const showDebugPanel = ref(false);
+
+function toggleDebugPanel() {
+  showDebugPanel.value = !showDebugPanel.value;
+}
 
         const pokeCooldownInterval = setInterval(() => {
           if (isPokeCooldown.value) {
@@ -1580,7 +1627,9 @@
           lastKnownUsernames,
           showHelp,
           toggleHelp,
-          selectedUsersForGroup
+          selectedUsersForGroup,
+            showDebugPanel,
+            toggleDebugPanel
         };
       }
     }).mount('#app');
