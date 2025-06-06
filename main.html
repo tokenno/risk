@@ -354,6 +354,12 @@
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
       <button @click="toggleHelp" class="secondary">Help</button>
+       
+    </div>
+         <div class="section audio-permission" v-if="showAudioPermission">
+      <h3>Audio Permission Required</h3>
+      <p>Please tap the button below to enable sound notifications</p>
+      <button @click="enableAudio">Enable Sound</button>
     </div>
 
     <div class="section">
@@ -506,11 +512,7 @@
       </div>
       <button @click="forceRefresh">Force Refresh</button>
     </div>
-    <div class="section audio-permission" v-if="showAudioPermission">
-      <h3>Audio Permission Required</h3>
-      <p>Please tap the button below to enable sound notifications</p>
-      <button @click="enableAudio">Enable Sound</button>
-    </div>
+  
   </div>
 
   <script>
