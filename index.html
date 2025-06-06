@@ -79,6 +79,9 @@
     transition: background 0.2s;
     color: #e0e0e0;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
   .user-list div:hover {
     background: #3a3a3a;
@@ -182,6 +185,9 @@
     animation: blink 1s infinite;
     background-color: #ff00ff !important;
   }
+  .emoji-marker {
+    font-size: 24px;
+  }
   @media (max-width: 600px) {
     .container {
       padding: 10px;
@@ -214,7 +220,7 @@
     overflow-y: auto;
     color: #e0e0e0;
     box-shadow: none;
-      padding-bottom: 40px;
+    padding-bottom: 40px;
   }
   .help-panel.open {
     right: 0;
@@ -283,47 +289,54 @@
     cursor: not-allowed;
     opacity: 0.5;
   }
-    .debug-panel {
-  position: absolute;
-  bottom: -300px;
-  left: 0;
-  width: 100%;
-  background-color: #2c2c2c;
-  z-index: 1000;
-  transition: bottom 0.3s ease;
-  padding: 20px;
-  border-top: 1px solid #444;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.debug-panel.open {
-  bottom: 0;
-}
-
-.close-debug {
-  position: absolute;
-  top: 10px;
-  right: 40px;
-  background: #dc3545;
-  border: none;
-  color: white;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-    z-index: 1001;
-}
-
-@media (max-width: 600px) {
   .debug-panel {
-    padding: 15px;
+    position: absolute;
+    bottom: -300px;
+    left: 0;
+    width: 100%;
+    background-color: #2c2c2c;
+    z-index: 1000;
+    transition: bottom 0.3s ease;
+    padding: 20px;
+    border-top: 1px solid #444;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
+    max-height: 300px;
+    overflow-y: auto;
   }
-}
+  .debug-panel.open {
+    bottom: 0;
+  }
+  .close-debug {
+    position: absolute;
+    top: 10px;
+    right: 40px;
+    background: #dc3545;
+    border: none;
+    color: white;
+    border-radius: 50%;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 1001;
+  }
+  @media (max-width: 600px) {
+    .debug-panel {
+      padding: 15px;
+    }
+  }
+  .emoji-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .emoji-picker button {
+    font-size: 1.2em;
+    padding: 4px 8px;
+  }
 </style>
 </head>
 <body>
@@ -334,20 +347,19 @@
       <button class="close-help" @click="toggleHelp">×</button>
       <h3>Sly</h3>
       <p>A location-based social networking app, capturing the essence of connecting with nearby users in various ways.</p>
-     
-            <h3>Important!</h3>
+      <h3>Important!</h3>
       <ul>
         <li>Only your GPS Position DATA are saved in the app and <strong>only while you using it. </strong></li>
         <li>After one hour of inactivity <strong>all DATA are delete from the server</strong>, no matter. </li>
         <li>Even if Go Online is On and you leave the app, <strong>your GPS Point beacon stops.</strong> </li>
         <li>We want to keep Sly <strong>open</strong> but <strong>safe.</strong> </li>
       </ul>
-        
-        <h3>Basic Functions</h3>
+      <h3>Basic Functions</h3>
       <ul>
-  <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
+        <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
         <li><strong>Change Name:</strong> Update your display name.</li>
         <li><strong>Sound On/Off:</strong> Toggle audio notifications.</li>
+        <li><strong>Show Emojis:</strong> Toggle visibility of sent emojis.</li>
         <li><strong>Help:</strong> Show/hide this help panel.</li>
       </ul>
       <h3>Map Controls</h3>
@@ -361,6 +373,7 @@
         <li><strong>Follow:</strong> Track another user's location.</li>
         <li><strong>Poke:</strong> Send a notification to another user.</li>
         <li><strong>Send Location:</strong> Share your current location once.</li>
+        <li><strong>Send Emoji:</strong> Send an emoji to another user, visible in the user list and optionally on the map.</li>
       </ul>
       <h3>Groups</h3>
       <ul>
@@ -383,24 +396,21 @@
         <li><strong>Safety and Coordination:</strong> You’re hiking with friends and want to ensure no one gets lost.</li>
         <li><strong>Casual Meetups:</strong> You’re in a new city and want to connect with nearby users.</li>
         <li><strong>Nightlife Connections:</strong> At a club or a party, use Sly to spot nearby users.</li>
-        
       </ul>
-       
     </div>
-  
 
-<div class="section">
-  <div style="display: flex; align-items: center; gap: 12px;">
-    <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="40" fill="#28a745"/>
-      <path d="M50 20 A30 30 0 0 1 80 50 A30 30 0 0 1 50 80 A30 30 0 0 1 20 50 A30 30 0 0 1 50 20" fill="none" stroke="#FFF" stroke-width="8"/>
-      <circle cx="50" cy="30" r="8" fill="#FFF"/>
-    </svg>
-    <span style="font-size: 0.9em; color: #e0e0e0;">
-    <span style="font-size: 1.4em; color: #28a745; font-weight: bold;">Sly</span>
-    </span>
-  </div>
-</div>
+    <div class="section">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="50" cy="50" r="40" fill="#28a745"/>
+          <path d="M50 20 A30 30 0 0 1 80 50 A30 30 0 0 1 50 80 A30 30 0 0 1 20 50 A30 30 0 0 1 50 20" fill="none" stroke="#FFF" stroke-width="8"/>
+          <circle cx="50" cy="30" r="8" fill="#FFF"/>
+        </svg>
+        <span style="font-size: 0.9em; color: #e0e0e0;">
+          <span style="font-size: 1.4em; color: #28a745; font-weight: bold;">Sly</span>
+        </span>
+      </div>
+    </div>
 
     <div class="section">
       <h3>Your Location</h3>
@@ -429,11 +439,12 @@
           <div v-else>Currently offline</div>
         </div>
       </div>
-        <br>
+      <br>
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-        <button @click="toggleDebugPanel" class="secondary">Debug</button>
+      <button @click="toggleEmojis">{{ showEmojis ? 'Hide Emojis' : 'Show Emojis' }}</button>
+      <button @click="toggleDebugPanel" class="secondary">Debug</button>
       <button @click="toggleHelp" class="secondary">Help</button>
     </div>
 
@@ -497,6 +508,11 @@
       >
         Send Location to {{ selectedUser.name }}
       </button>
+      <div v-if="selectedUser" class="emoji-picker">
+        <button v-for="emoji in availableEmojis" :key="emoji" @click="sendEmoji(emoji)">
+          {{ emoji }}
+        </button>
+      </div>
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
@@ -509,6 +525,9 @@
              :class="{ selected: selectedUser?.id === user.id }"
              @click="selectUser(user)">
           <div>{{ user.name }}</div>
+          <div v-if="showEmojis && user.receivedEmojis?.length" class="emojis">
+            {{ user.receivedEmojis.join(' ') }}
+          </div>
           <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
           <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
           <div>{{ formatRelativeTime(user.lastSeen) }}</div>
@@ -535,6 +554,9 @@
             :disabled="user.id === currentUserId"
           >
           <div @click="selectUser(user)">{{ user.name }}</div>
+          <div v-if="showEmojis && user.receivedEmojis?.length" class="emojis">
+            {{ user.receivedEmojis.join(' ') }}
+          </div>
           <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
           <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
           <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
@@ -551,31 +573,33 @@
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </div>
 
- <div class="debug-panel" :class="{ open: showDebugPanel }">
-  <button class="close-debug" @click="toggleDebugPanel">×</button>
-  <h3>Debug Information</h3>
-  <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-  <div>User ID: {{ currentUserId || 'Not set' }}</div>
-  <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
-  <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
-  <div v-if="activeSoundProfiles.length > 0">
-    Active sounds: 
-    <span v-for="profile in activeSoundProfiles" :key="profile.id">
-      {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
-    </span>
+    <div class="debug-panel" :class="{ open: showDebugPanel }">
+      <button class="close-debug" @click="toggleDebugPanel">×</button>
+      <h3>Debug Information</h3>
+      <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
+      <div>User ID: {{ currentUserId || 'Not set' }}</div>
+      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
+      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+      <div v-if="activeSoundProfiles.length > 0">
+        Active sounds: 
+        <span v-for="profile in activeSoundProfiles" :key="profile.id">
+          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
+        </span>
+      </div>
+      <div>Audio State: {{ audioState }}</div>
+      <div>
+        Musical Scale: 
+        <select v-model="currentScaleName" @change="updateScale">
+          <option value="pentatonic">Pentatonic</option>
+          <option value="major">Major</option>
+          <option value="minor">Minor</option>
+          <option value="chromatic">Chromatic</option>
+        </select>
+      </div>
+      <div>Emojis Visible: {{ showEmojis ? 'Yes' : 'No' }}</div>
+      <button @click="forceRefresh">Force Refresh</button>
+    </div>
   </div>
-  <div>Audio State: {{ audioState }}</div>
-  <div>
-    Musical Scale: 
-    <select v-model="currentScaleName" @change="updateScale">
-      <option value="pentatonic">Pentatonic</option>
-      <option value="major">Major</option>
-      <option value="minor">Minor</option>
-      <option value="chromatic">Chromatic</option>
-    </select>
-  </div>
-  <button @click="forceRefresh">Force Refresh</button>
-</div>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -657,10 +681,13 @@
         const showHelp = ref(false);
         const selectedUsersForGroup = ref([]);
         const enableGroupAlerts = ref(false);
-        const groupAlertDistance = ref(100); // default 100 meters
+        const groupAlertDistance = ref(100);
         const groupAlertMessage = ref('');
         const lastAlertTimes = ref({});
         const groupAlertCheckInterval = ref(null);
+        const showEmojis = ref(true);
+        const availableEmojis = ref(['😀', '👍', '❤️', '🎉', '🚀']);
+        const emojiMarkers = ref([]);
         let map = null;
         let userMarker = null;
         let nearbyMarkers = [];
@@ -669,12 +696,11 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
-          
-          const showDebugPanel = ref(false);
+        const showDebugPanel = ref(false);
 
-function toggleDebugPanel() {
-  showDebugPanel.value = !showDebugPanel.value;
-}
+        function toggleDebugPanel() {
+          showDebugPanel.value = !showDebugPanel.value;
+        }
 
         const pokeCooldownInterval = setInterval(() => {
           if (isPokeCooldown.value) {
@@ -693,9 +719,26 @@ function toggleDebugPanel() {
           showHelp.value = !showHelp.value;
         }
 
+        function toggleEmojis() {
+          showEmojis.value = !showEmojis.value;
+          updateNearbyMarkers();
+        }
+
+        async function sendEmoji(emoji) {
+          if (!selectedUser.value || !userLocation.value) return;
+          try {
+            await db.collection('users').doc(selectedUser.value.id).update({
+              receivedEmojis: firebase.firestore.FieldValue.arrayUnion(emoji)
+            });
+            console.log(`Sent emoji ${emoji} to ${selectedUser.value.name}`);
+            alert(`Sent ${emoji} to ${selectedUser.value.name}`);
+          } catch (error) {
+            errorMessage.value = "Failed to send emoji: " + error.message;
+          }
+        }
+
         async function sharePosition() {
           if (!userLocation.value) return;
-          
           try {
             isSharingPosition.value = true;
             await db.collection('sharedPositions').doc(currentUserId.value).set({
@@ -705,7 +748,6 @@ function toggleDebugPanel() {
               longitude: userLocation.value[1],
               timestamp: new Date().toISOString()
             });
-            
             positionShareInterval.value = setInterval(async () => {
               if (userLocation.value) {
                 await db.collection('sharedPositions').doc(currentUserId.value).update({
@@ -715,7 +757,6 @@ function toggleDebugPanel() {
                 });
               }
             }, 10000);
-            
             console.log('Started sharing position');
           } catch (error) {
             errorMessage.value = "Failed to share position: " + error.message;
@@ -732,7 +773,6 @@ function toggleDebugPanel() {
             clearInterval(groupAlertCheckInterval.value);
             groupAlertCheckInterval.value = null;
           }
-          
           if (newEnableAlerts && newGroupUsers.length > 0 && newUserLocation) {
             groupAlertCheckInterval.value = setInterval(checkGroupDistances, 5000);
           }
@@ -740,17 +780,14 @@ function toggleDebugPanel() {
 
         function checkGroupDistances() {
           if (!enableGroupAlerts.value || !userLocation.value || groupUsers.value.length === 0) return;
-          
           const now = Date.now();
           groupUsers.value.forEach(user => {
             const distance = calculateDistance(userLocation.value, [user.latitude, user.longitude]);
-            
             if (distance > groupAlertDistance.value) {
               if (!lastAlertTimes.value[user.id] || (now - lastAlertTimes.value[user.id]) > 60000) {
                 groupAlertMessage.value = `${user.name} is now ${distance < 1000 ? distance.toFixed(0) + 'm' : (distance/1000).toFixed(1) + 'km'} away!`;
                 alert(groupAlertMessage.value);
                 lastAlertTimes.value[user.id] = now;
-                
                 if (soundEnabled.value && audioContext && audioContext.state === 'running') {
                   playAlertSound();
                 }
@@ -761,7 +798,6 @@ function toggleDebugPanel() {
 
         function playAlertSound() {
           if (!audioContext || audioContext.state !== 'running') return;
-          
           try {
             const osc = audioContext.createOscillator();
             const gain = audioContext.createGain();
@@ -793,7 +829,6 @@ function toggleDebugPanel() {
 
         async function sendLocation() {
           if (!selectedUser.value || !userLocation.value) return;
-          
           try {
             await db.collection('users').doc(selectedUser.value.id).update({
               receivedLocation: {
@@ -1088,7 +1123,6 @@ function toggleDebugPanel() {
                 iconSize: [20, 20]
               })
             }).addTo(map).bindPopup(`<b>${user.name}</b><br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-            
             map.setView([user.latitude, user.longitude], 18);
           }
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
@@ -1159,19 +1193,35 @@ function toggleDebugPanel() {
         function updateNearbyMarkers() {
           if (!map) return;
           nearbyMarkers.forEach(marker => map.removeLayer(marker));
+          emojiMarkers.value.forEach(marker => map.removeLayer(marker));
           nearbyMarkers = [];
+          emojiMarkers.value = [];
           const usersToDisplay = groupUsers.value.length 
             ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
             : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
           nearbyMarkers = usersToDisplay.map((user, index) => {
             const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
-            return L.marker([user.latitude, user.longitude], {
+            const marker = L.marker([user.latitude, user.longitude], {
               icon: L.divIcon({
                 html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
                 className: 'user-marker',
                 iconSize: [20, 20]
               })
-            }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
+            }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away${user.receivedEmojis && showEmojis.value ? '<br>Emojis: ' + user.receivedEmojis.join(' ') : ''}`);
+            if (showEmojis.value && user.receivedEmojis?.length) {
+              user.receivedEmojis.forEach((emoji, i) => {
+                const offset = 0.0001 * (i + 1);
+                const emojiMarker = L.marker([user.latitude + offset, user.longitude], {
+                  icon: L.divIcon({
+                    html: `<div class="emoji-marker">${emoji}</div>`,
+                    className: 'emoji-marker',
+                    iconSize: [24, 24]
+                  })
+                }).addTo(map).bindPopup(`<b>Emoji from ${user.name}</b>`);
+                emojiMarkers.value.push(emojiMarker);
+              });
+            }
+            return marker;
           });
           if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
             followedUserId.value = null;
@@ -1254,13 +1304,19 @@ function toggleDebugPanel() {
             }
             if (map && mapInitialized.value) {
               nearbyMarkers.forEach(marker => map.removeLayer(marker));
+              emojiMarkers.value.forEach(marker => map.removeLayer(marker));
               nearbyMarkers = [];
+              emojiMarkers.value = [];
               if (selectedUserMarker) {
                 map.removeLayer(selectedUserMarker);
                 selectedUserMarker = null;
               }
             }
           }
+        });
+
+        watch(showEmojis, () => {
+          updateNearbyMarkers();
         });
 
         onMounted(() => {
@@ -1276,64 +1332,73 @@ function toggleDebugPanel() {
               user.value = userData.displayName || 'Anonymous';
               nearbyUsers.value = [];
               getUserLocation();
-             
-        db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-  if (!doc.exists) {
-    console.warn('User document does not exist');
-    return;
-  }
-  const data = doc.data();
-  if (!data) {
-    console.warn('No data in user document');
-    return;
-  }
-  try {
-    if (
-      data.status === 'ONLINE' && // Use Firestore state for consistency
-      data.lastPoke &&
-      data.lastPoke.fromId !== currentUserId.value
-    ) {
-      alert(`You were poked by ${data.lastPoke.from}!`);
-      if (soundEnabled.value) playPokeSound();
-      // Clear poke to prevent repeated alerts
-      db.collection('users').doc(currentUserId.value).update({
-        lastPoke: firebase.firestore.FieldValue.delete()
-      }).catch(error => {
-        console.error('Failed to clear lastPoke:', error);
-      });
-    }
-    if (
-      data.status === 'ONLINE' &&
-      data.receivedLocation &&
-      data.receivedLocation.fromId !== currentUserId.value
-    ) {
-      alert(`Received location from ${data.receivedLocation.from}!
-             Lat: ${data.receivedLocation.latitude.toFixed(6)}
-             Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
-      if (map) {
-        const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
-        L.marker(receivedLoc, {
-          icon: L.divIcon({
-            html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
-            className: 'received-location-marker',
-            iconSize: [20, 20]
-          })
-        }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received`);
-        map.setView(receivedLoc, 13);
-      }
-      // Clear receivedLocation to prevent repeated alerts
-      db.collection('users').doc(currentUserId.value).update({
-        receivedLocation: firebase.firestore.FieldValue.delete()
-      }).catch(error => {
-        console.error('Failed to clear receivedLocation:', error);
-      });
-    }
-  } catch (error) {
-    console.error('Error processing snapshot:', error);
-  }
-}, (error) => {
-  console.error('Snapshot listener error:', error);
-});
+              db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+                if (!doc.exists) {
+                  console.warn('User document does not exist');
+                  return;
+                }
+                const data = doc.data();
+                if (!data) {
+                  console.warn('No data in user document');
+                  return;
+                }
+                try {
+                  if (
+                    data.status === 'ONLINE' &&
+                    data.lastPoke &&
+                    data.lastPoke.fromId !== currentUserId.value
+                  ) {
+                    alert(`You were poked by ${data.lastPoke.from}!`);
+                    if (soundEnabled.value) playPokeSound();
+                    db.collection('users').doc(currentUserId.value).update({
+                      lastPoke: firebase.firestore.FieldValue.delete()
+                    }).catch(error => {
+                      console.error('Failed to clear lastPoke:', error);
+                    });
+                  }
+                  if (
+                    data.status === 'ONLINE' &&
+                    data.receivedLocation &&
+                    data.receivedLocation.fromId !== currentUserId.value
+                  ) {
+                    alert(`Received location from ${data.receivedLocation.from}!
+                           Lat: ${data.receivedLocation.latitude.toFixed(6)}
+                           Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
+                    if (map) {
+                      const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
+                      L.marker(receivedLoc, {
+                        icon: L.divIcon({
+                          html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
+                          className: 'received-location-marker',
+                          iconSize: [20, 20]
+                        })
+                      }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received`);
+                      map.setView(receivedLoc, 13);
+                    }
+                    db.collection('users').doc(currentUserId.value).update({
+                      receivedLocation: firebase.firestore.FieldValue.delete()
+                    }).catch(error => {
+                      console.error('Failed to clear receivedLocation:', error);
+                    });
+                  }
+                  if (
+                    data.status === 'ONLINE' &&
+                    data.receivedEmojis &&
+                    data.receivedEmojis.length > 0
+                  ) {
+                    alert(`Received emojis from ${data.name}: ${data.receivedEmojis.join(' ')}`);
+                    db.collection('users').doc(currentUserId.value).update({
+                      receivedEmojis: firebase.firestore.FieldValue.delete()
+                    }).catch(error => {
+                      console.error('Failed to clear receivedEmojis:', error);
+                    });
+                  }
+                } catch (error) {
+                  console.error('Error processing snapshot:', error);
+                }
+              }, (error) => {
+                console.error('Snapshot listener error:', error);
+              });
             } else {
               errorMessage.value = 'Please sign in';
               signIn();
@@ -1372,13 +1437,11 @@ function toggleDebugPanel() {
               locationStatus.value = 'acquired';
               errorMessage.value = '';
               updateUserLocation();
-              
               if (map) {
                 map.setView(userLocation.value, 18);
               } else {
                 initMap(userLocation.value);
               }
-              
               if (status.value === 'ONLINE') fetchNearbyUsers();
             },
             (error) => {
@@ -1404,7 +1467,8 @@ function toggleDebugPanel() {
                 status: status.value,
                 latitude: userLocation.value[0],
                 longitude: userLocation.value[1],
-                lastSeen: new Date().toISOString()
+                lastSeen: new Date().toISOString(),
+                receivedEmojis: []
               }, { merge: true });
             } catch (error) {
               errorMessage.value = 'Failed to update location: ' + error.message;
@@ -1416,7 +1480,6 @@ function toggleDebugPanel() {
           const previousStatus = status.value;
           status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
           await updateUserLocation();
-          
           if (status.value === 'ONLINE' && previousStatus === 'OFFLINE') {
             nearbyUsers.value = [];
             groupUsers.value = [];
@@ -1425,10 +1488,11 @@ function toggleDebugPanel() {
             followedUserName.value = '';
             followedUserLocation.value = null;
             selectedUser.value = null;
-            
             if (map && mapInitialized.value) {
               nearbyMarkers.forEach(marker => map.removeLayer(marker));
+              emojiMarkers.value.forEach(marker => map.removeLayer(marker));
               nearbyMarkers = [];
+              emojiMarkers.value = [];
               if (selectedUserMarker) {
                 map.removeLayer(selectedUserMarker);
                 selectedUserMarker = null;
@@ -1439,16 +1503,13 @@ function toggleDebugPanel() {
                 map.invalidateSize();
               }
             }
-            
             if (userLocation.value) {
               fetchNearbyUsers();
             }
-            
             if (groupAlertCheckInterval.value) {
               clearInterval(groupAlertCheckInterval.value);
               groupAlertCheckInterval.value = null;
             }
-            
             if (soundEnabled.value && audioContext && audioContext.state === 'running') {
               updateUserBeeps();
             }
@@ -1464,7 +1525,9 @@ function toggleDebugPanel() {
             }
             if (map && mapInitialized.value) {
               nearbyMarkers.forEach(marker => map.removeLayer(marker));
+              emojiMarkers.value.forEach(marker => map.removeLayer(marker));
               nearbyMarkers = [];
+              emojiMarkers.value = [];
               if (selectedUserMarker) {
                 map.removeLayer(selectedUserMarker);
                 selectedUserMarker = null;
@@ -1538,7 +1601,8 @@ function toggleDebugPanel() {
                     lastSeen: data.lastSeen,
                     latitude: data.latitude,
                     longitude: data.longitude,
-                    status: data.status
+                    status: data.status,
+                    receivedEmojis: data.receivedEmojis || []
                   };
                 })
                 .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
@@ -1586,6 +1650,7 @@ function toggleDebugPanel() {
             name: userData.name || 'Anonymous',
             latitude: userData.latitude,
             longitude: userData.longitude,
+            receivedEmojis: userData.receivedEmojis || []
           };
         }
 
@@ -1611,7 +1676,9 @@ function toggleDebugPanel() {
             map = null;
             userMarker = null;
             nearbyMarkers.forEach(marker => marker.remove());
+            emojiMarkers.value.forEach(marker => marker.remove());
             nearbyMarkers = [];
+            emojiMarkers.value = [];
             if (selectedUserMarker) {
               selectedUserMarker.remove();
               selectedUserMarker = null;
@@ -1675,8 +1742,12 @@ function toggleDebugPanel() {
           showHelp,
           toggleHelp,
           selectedUsersForGroup,
-            showDebugPanel,
-            toggleDebugPanel
+          showDebugPanel,
+          toggleDebugPanel,
+          showEmojis,
+          toggleEmojis,
+          availableEmojis,
+          sendEmoji
         };
       }
     }).mount('#app');
