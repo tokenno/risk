@@ -274,6 +274,15 @@
       box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
     }
   }
+  .user-list input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+    accent-color: #28a745;
+  }
+  .user-list input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
 </style>
 </head>
 <body>
@@ -305,8 +314,9 @@
       </ul>
       <h3>Groups</h3>
       <ul>
-        <li>Create temporary groups of nearby users.</li>
-        <li>Select group size from the dropdown.</li>
+        <li>Create temporary groups by selecting specific nearby users.</li>
+        <li>Check the boxes next to users to include them in the group.</li>
+        <li>Click "Create Group with Selected Users" to form the group.</li>
         <li>Clear group to return to seeing all users.</li>
       </ul>
       <h3>Audio Features</h3>
@@ -364,16 +374,10 @@
     <div class="section">
       <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
       <div v-if="!groupUsers.length" class="button-group">
-        <label for="group-size">Select group size:</label>
-        <select id="group-size" v-model="groupSize" @change="createGroup">
-          <option value="0">All</option>
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="5">5</option>
-          <option value="10">10</option>
-        </select>
+        <button class="secondary" @click="createGroupFromSelected" :disabled="selectedUsersForGroup.length === 0">
+          Create Group with Selected Users
+        </button>
       </div>
-  
       <div v-else class="button-group">
         <p>Group of {{ groupUsers.length }} users</p>
         <button class="secondary" @click="clearGroup">Clear Group</button>
@@ -432,12 +436,18 @@
         <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
              :key="user.id" 
              class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }"
-             @click="selectUser(user)">
-          <div>{{ user.name }}</div>
-          <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+             :class="{ selected: selectedUser?.id === user.id }">
+          <input 
+            type="checkbox" 
+            :value="user.id" 
+            v-model="selectedUsersForGroup" 
+            @click.stop 
+            :disabled="user.id === currentUserId"
+          >
+          <div @click="selectUser(user)">{{ user.name }}</div>
+          <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
+          <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+          <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
           <button 
             v-if="user.id !== currentUserId" 
             @click.stop="toggleFollow(user)"
@@ -555,12 +565,12 @@
         const followedUserId = ref(null);
         const followedUserName = ref('');
         const followedUserLocation = ref(null);
-        const groupSize = ref(0);
         const groupUsers = ref([]);
         const isSharingPosition = ref(false);
         const positionShareInterval = ref(null);
         const lastKnownUsernames = ref({});
         const showHelp = ref(false);
+        const selectedUsersForGroup = ref([]);
 
         let map = null;
         let userMarker = null;
@@ -1003,10 +1013,8 @@
 
         function updateNearbyMarkers() {
           if (!map) return;
-          // Clear existing markers
           nearbyMarkers.forEach(marker => map.removeLayer(marker));
           nearbyMarkers = [];
-          // Only display users who are currently online and recently active
           const usersToDisplay = groupUsers.value.length 
             ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
             : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
@@ -1020,7 +1028,6 @@
               })
             }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
           });
-          // Reset followed user if they are no longer online or active
           if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
             followedUserId.value = null;
             followedUserName.value = '';
@@ -1055,17 +1062,12 @@
           }
         }
 
-        function createGroup() {
+        function createGroupFromSelected() {
           const onlineUsers = nearbyUsers.value.filter(
             u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000
           );
-          const size = parseInt(groupSize.value);
-          if (size > 0 && onlineUsers.length > 0) {
-            const shuffled = onlineUsers.sort(() => 0.5 - Math.random());
-            groupUsers.value = shuffled.slice(0, Math.min(size, onlineUsers.length));
-          } else {
-            groupUsers.value = [];
-          }
+          groupUsers.value = onlineUsers.filter(user => selectedUsersForGroup.value.includes(user.id));
+          selectedUsersForGroup.value = [];
           updateNearbyMarkers();
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
@@ -1074,7 +1076,7 @@
 
         function clearGroup() {
           groupUsers.value = [];
-          groupSize.value = 0;
+          selectedUsersForGroup.value = [];
           updateNearbyMarkers();
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
@@ -1101,7 +1103,7 @@
             userBeepIntervals.clear();
             activeSoundProfiles.value = [];
             groupUsers.value = [];
-            groupSize.value = 0;
+            selectedUsersForGroup.value = [];
             if (isSharingPosition.value) {
               stopSharingPosition();
             }
@@ -1238,24 +1240,21 @@
           await updateUserLocation();
           
           if (status.value === 'ONLINE' && previousStatus === 'OFFLINE') {
-            // Clear map and user-related state to show only currently online users
             nearbyUsers.value = [];
             groupUsers.value = [];
-            groupSize.value = 0;
+            selectedUsersForGroup.value = [];
             followedUserId.value = null;
             followedUserName.value = '';
             followedUserLocation.value = null;
             selectedUser.value = null;
             
             if (map && mapInitialized.value) {
-              // Remove all nearby and selected markers
               nearbyMarkers.forEach(marker => map.removeLayer(marker));
               nearbyMarkers = [];
               if (selectedUserMarker) {
                 map.removeLayer(selectedUserMarker);
                 selectedUserMarker = null;
               }
-              // Ensure user marker is visible and centered
               if (userLocation.value && userMarker) {
                 userMarker.setLatLng(userLocation.value);
                 map.setView(userLocation.value, 18);
@@ -1263,27 +1262,23 @@
               }
             }
             
-            // Fetch only currently online users
             if (userLocation.value) {
               fetchNearbyUsers();
             }
             
-            // Update audio for online users
             if (soundEnabled.value && audioContext && audioContext.state === 'running') {
               updateUserBeeps();
             }
           } else if (status.value === 'OFFLINE') {
-            // Clear state when going offline
             nearbyUsers.value = [];
             userBeepIntervals.forEach(interval => clearInterval(interval));
             userBeepIntervals.clear();
             activeSoundProfiles.value = [];
             groupUsers.value = [];
-            groupSize.value = 0;
+            selectedUsersForGroup.value = [];
             if (isSharingPosition.value) {
               stopSharingPosition();
             }
-            // Clear map markers when going offline
             if (map && mapInitialized.value) {
               nearbyMarkers.forEach(marker => map.removeLayer(marker));
               nearbyMarkers = [];
@@ -1483,16 +1478,16 @@
           followedUserId,
           followedUserName,
           followedUserLocation,
-          groupSize,
           groupUsers,
-          createGroup,
+          createGroupFromSelected,
           clearGroup,
           sharePosition,
           stopSharingPosition,
           isSharingPosition,
           lastKnownUsernames,
           showHelp,
-          toggleHelp
+          toggleHelp,
+          selectedUsersForGroup
         };
       }
     }).mount('#app');
