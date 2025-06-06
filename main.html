@@ -1236,14 +1236,55 @@ function updateMapLocation(location) {
           }
         }
 
-        async function toggleStatus() {
-          status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
-          await updateUserLocation();
-          nearbyUsers.value = [];
-          if (status.value === 'ONLINE') {
-            fetchNearbyUsers();
-          }
-        }
+       async function toggleStatus() {
+  const previousStatus = status.value;
+  status.value = status.value === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
+  await updateUserLocation();
+  if (status.value === 'ONLINE' && previousStatus === 'OFFLINE') {
+    // Clear the map when going online
+    nearbyUsers.value = [];
+    groupUsers.value = [];
+    groupSize.value = 0;
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+    selectedUser.value = null;
+    if (map) {
+      // Remove all nearby markers
+      nearbyMarkers.forEach(marker => map.removeLayer(marker));
+      nearbyMarkers = [];
+      // Remove selected user marker if it exists
+      if (selectedUserMarker) {
+        map.removeLayer(selectedUserMarker);
+        selectedUserMarker = null;
+      }
+      // Focus on user's location
+      if (userLocation.value) {
+        map.setView(userLocation.value, 18);
+      }
+    }
+    fetchNearbyUsers();
+  } else if (status.value === 'OFFLINE') {
+    nearbyUsers.value = [];
+    userBeepIntervals.forEach(interval => clearInterval(interval));
+    userBeepIntervals.clear();
+    activeSoundProfiles.value = [];
+    groupUsers.value = [];
+    groupSize.value = 0;
+    if (isSharingPosition.value) {
+      stopSharingPosition();
+    }
+    // Optionally clear map markers when going offline
+    if (map) {
+      nearbyMarkers.forEach(marker => map.removeLayer(marker));
+      nearbyMarkers = [];
+      if (selectedUserMarker) {
+        map.removeLayer(selectedUserMarker);
+        selectedUserMarker = null;
+      }
+    }
+  }
+}
 
         function selectDistance(distance) {
           selectedDistance.value = distance;
