@@ -1265,35 +1265,64 @@ function toggleDebugPanel() {
               user.value = userData.displayName || 'Anonymous';
               nearbyUsers.value = [];
               getUserLocation();
-              db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-                const data = doc.data();
-              if (
-  status.value === 'ONLINE' &&
-  data.lastPoke &&
-  data.lastPoke.fromId !== currentUserId.value
-) {
-  alert(`You were poked by ${data.lastPoke.from}!`);
-  if (soundEnabled.value) playPokeSound();
-}
-                if (data.receivedLocation && data.receivedLocation.fromId !== currentUserId.value) {
-                  alert(`Received location from ${data.receivedLocation.from}!
-                         Lat: ${data.receivedLocation.latitude.toFixed(6)}
-                         Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
-                  
-                  if (map) {
-                    const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
-                    L.marker(receivedLoc, {
-                      icon: L.divIcon({
-                        html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
-                        className: 'received-location-marker',
-                        iconSize: [20, 20]
-                      })
-                    }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received at ${new Date(data.receivedLocation.timestamp).toLocaleTimeString()}`);
-                    
-                    map.setView(receivedLoc, 13);
-                  }
-                }
-              });
+             
+        db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+  if (!doc.exists) {
+    console.warn('User document does not exist');
+    return;
+  }
+  const data = doc.data();
+  if (!data) {
+    console.warn('No data in user document');
+    return;
+  }
+  try {
+    if (
+      data.status === 'ONLINE' && // Use Firestore state for consistency
+      data.lastPoke &&
+      data.lastPoke.fromId !== currentUserId.value
+    ) {
+      alert(`You were poked by ${data.lastPoke.from}!`);
+      if (soundEnabled.value) playPokeSound();
+      // Clear poke to prevent repeated alerts
+      db.collection('users').doc(currentUserId.value).update({
+        lastPoke: firebase.firestore.FieldValue.delete()
+      }).catch(error => {
+        console.error('Failed to clear lastPoke:', error);
+      });
+    }
+    if (
+      data.status === 'ONLINE' &&
+      data.receivedLocation &&
+      data.receivedLocation.fromId !== currentUserId.value
+    ) {
+      alert(`Received location from ${data.receivedLocation.from}!
+             Lat: ${data.receivedLocation.latitude.toFixed(6)}
+             Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
+      if (map) {
+        const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
+        L.marker(receivedLoc, {
+          icon: L.divIcon({
+            html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
+            className: 'received-location-marker',
+            iconSize: [20, 20]
+          })
+        }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received`);
+        map.setView(receivedLoc, 13);
+      }
+      // Clear receivedLocation to prevent repeated alerts
+      db.collection('users').doc(currentUserId.value).update({
+        receivedLocation: firebase.firestore.FieldValue.delete()
+      }).catch(error => {
+        console.error('Failed to clear receivedLocation:', error);
+      });
+    }
+  } catch (error) {
+    console.error('Error processing snapshot:', error);
+  }
+}, (error) => {
+  console.error('Snapshot listener error:', error);
+});
             } else {
               errorMessage.value = 'Please sign in';
               signIn();
