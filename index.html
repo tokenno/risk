@@ -368,11 +368,66 @@
   font-size: 0.8em;
   margin-left: 8px;
 }
+    .message.sent {
+  background-color: #ff8800; /* orange */
+  color: black;
+}
+
+.message.received {
+  background-color: #007bff; /* blue */
+  color: white;
+}
+   .flash-user {
+  animation: flash 1s ease-in-out infinite;
+}
+@keyframes flash {
+  0% { background-color: #ffec00; }
+  50% { background-color: transparent; }
+  100% { background-color: #ffec00; }
+}
+
+
+@keyframes flash {
+  0% { background-color: #fff200; }
+  50% { background-color: transparent; }
+  100% { background-color: #fff200; }
+}
+.message-alert {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #007bff;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-weight: bold;
+  box-shadow: 0 0 10px rgba(0,0,0,0.4);
+  z-index: 1001;
+  cursor: pointer;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+
 }
 </style>
 </head>
 <body>
   <div id="app" class="container">
+      <div 
+  v-if="showMessageAlert && messageAlert" 
+  class="message-alert" 
+  @click="dismissMessageAlert"
+>
+  📩 New message from {{ messageAlert.from }} – click to open
+</div>
+
     <!-- Help Panel -->
     <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
     <div class="help-panel" :class="{ open: showHelp }">
@@ -520,6 +575,13 @@
         <button class="secondary" @click="createGroupFromSelected" :disabled="selectedUsersForGroup.length === 0">
           Create Group with Selected Users
         </button>
+          <div 
+  :key="user.id" 
+  class="user-list"
+  :class="{ selected: selectedUser?.id === user.id }"
+  :data-user-id="user.id"
+>
+          </div>
       </div>
       <div v-else class="button-group">
         <p>Group of {{ groupUsers.length }} users</p>
@@ -569,10 +631,12 @@
     </div>
   </div>
   <div v-if="messages.length > 0" class="messages-container">
-    <div v-for="msg in messages" :key="msg.id" class="message">
-      <strong>{{ msg.from }}:</strong> {{ msg.text }}
-      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-    </div>
+  <div v-for="msg in messages" :key="msg.id" 
+     class="message" 
+     :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
+  <strong>{{ msg.from }}:</strong> {{ msg.text }}
+  <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+</div>
   </div>
 </div>
       <div v-if="isPokeCooldown" class="poke-cooldown">
@@ -747,6 +811,9 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+          const messageAlert = ref(null); // { from: 'Name', fromId: 'uid' }
+const showMessageAlert = ref(false);
+
           
           const showDebugPanel = ref(false);
             const isSignedIn = ref(false);
@@ -1579,21 +1646,59 @@ async function signOut() {
   }
   
   //  loadMessages function
-  function loadMessages() {
-    if (!currentUserId.value) return;
-    
-    db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-      if (doc.exists) {
-        const data = doc.data();
-        if (data.messages) {
-          messages.value = data.messages
-            .filter(msg => msg.fromId !== currentUserId.value)
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 20);
+function loadMessages() {
+  if (!currentUserId.value) return;
+
+  db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.messages) {
+        const newIncoming = data.messages
+          .filter(msg => msg.fromId !== currentUserId.value)
+          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+          .filter(msg => !messages.value.some(existing => existing.timestamp === msg.timestamp));
+
+        if (newIncoming.length > 0) {
+          const latest = newIncoming[newIncoming.length - 1];
+          messageAlert.value = { from: latest.from, fromId: latest.fromId };
+          showMessageAlert.value = true;
+
+          setTimeout(() => {
+            showMessageAlert.value = false;
+          }, 7000); // auto-dismiss after 7 sec
+
+          flashUser(latest.fromId);
         }
+
+        messages.value = [...data.messages.filter(m => m.fromId !== currentUserId.value), ...messages.value.filter(m => m.from === 'You')].slice(-20);
       }
-    });
+    }
+  });
+}
+
+      function dismissMessageAlert() {
+  showMessageAlert.value = false;
+  if (messageAlert.value && messageAlert.value.fromId) {
+    const user = nearbyUsers.value.find(u => u.id === messageAlert.value.fromId);
+    if (user) {
+      selectUser(user);
+    }
   }
+  messageAlert.value = null;
+}
+
+      
+function flashUser(userId) {
+  nextTick(() => {
+    const el = document.querySelector(`[data-user-id="${userId}"]`);
+    if (el) {
+      el.classList.add('flash-user');
+      setTimeout(() => el.classList.remove('flash-user'), 5000);
+    }
+  });
+}
+
+
   
   //  clearOldMessages function
   async function clearOldMessages() {
