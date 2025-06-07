@@ -333,6 +333,29 @@
   .debug-panel {
     padding: 15px;
   }
+    .messages-container {
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.message {
+  padding: 6px;
+  border-bottom: 1px solid #444;
+}
+
+.message:last-child {
+  border-bottom: none;
+}
+
+.message small {
+  color: #888;
+  font-size: 0.8em;
+  margin-left: 8px;
+}
 }
 </style>
 </head>
@@ -492,6 +515,26 @@
           {{ distance.label }}
         </button>
       </div>
+          
+          <div class="section" v-if="selectedUser">
+  <h3>Send Message</h3>
+  <div class="button-group">
+    <input 
+      type="text" 
+      v-model="messageText" 
+      placeholder="Type your message"
+      @keyup.enter="sendMessage"
+    >
+    <button @click="sendMessage" :disabled="!messageText">Send</button>
+  </div>
+  <div v-if="messages.length > 0" class="messages-container">
+    <div v-for="msg in messages" :key="msg.id" class="message">
+      <strong>{{ msg.from }}:</strong> {{ msg.text }}
+      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+    </div>
+  </div>
+</div>
+          
       <button 
         v-if="selectedUser" 
         @click="pokeUser"
@@ -681,6 +724,8 @@
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
           
           const showDebugPanel = ref(false);
+            const messageText = ref('');
+  const messages = ref([]);
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
@@ -768,7 +813,60 @@ function toggleDebugPanel() {
             }
           });
         }
-
+ async function sendMessage() {
+    if (!selectedUser.value || !messageText.value.trim()) return;
+    
+    try {
+      // Add message to recipient's document
+      await db.collection('users').doc(selectedUser.value.id).update({
+        messages: firebase.firestore.FieldValue.arrayUnion({
+          from: user.value,
+          fromId: currentUserId.value,
+          text: messageText.value,
+          timestamp: new Date().toISOString()
+        })
+      });
+      
+      // Also store locally for the sender
+      messages.value.push({
+        from: 'You',
+        text: messageText.value,
+        timestamp: new Date().toISOString()
+      });
+      
+      messageText.value = '';
+    } catch (error) {
+      errorMessage.value = "Failed to send message: " + error.message;
+    }
+  }
+  
+  function loadMessages() {
+    if (!currentUserId.value) return;
+    
+    db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+      if (doc.exists) {
+        const data = doc.data();
+        if (data.messages) {
+          // Filter out old messages and ones from yourself
+          messages.value = data.messages
+            .filter(msg => msg.fromId !== currentUserId.value)
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            .slice(0, 20); // Keep only 20 most recent
+        }
+      }
+    });
+  }
+  
+  // Call loadMessages when user is authenticated
+  onMounted(() => {
+    // ... existing onMounted code ...
+    auth.onAuthStateChanged((userData) => {
+      if (userData) {
+        // ... existing auth code ...
+        loadMessages();
+      }
+    });
+  });
         function playAlertSound() {
           if (!audioContext || audioContext.state !== 'running') return;
           
@@ -1686,7 +1784,10 @@ function toggleDebugPanel() {
           toggleHelp,
           selectedUsersForGroup,
             showDebugPanel,
-            toggleDebugPanel
+            toggleDebugPanel,
+            messageText,
+            messages,
+            sendMessage
         };
       }
     }).mount('#app');
