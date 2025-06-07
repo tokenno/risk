@@ -1024,6 +1024,26 @@ async function sendPanelMessage() {
             }
           }
         }, 200);
+          
+          function updateMapLocation(newLocation) {
+  if (!map || !newLocation) return;
+  
+  if (userMarker) {
+    userMarker.setLatLng(newLocation);
+  } else {
+    userMarker = L.marker(newLocation, {
+      icon: L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      })
+    }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+  }
+  
+  if (!followedUserId.value) {
+    map.setView(newLocation, 18);
+  }
+}
 
         function toggleHelp() {
           showHelp.value = !showHelp.value;
