@@ -796,6 +796,15 @@
           const showNewMessageAlert = ref(false);
 const newMessageFrom = ref('');
 const messageCleanupInterval = ref(null);
+          
+          function getZoomLevelForDistance(distance) {
+  if (distance <= 100) return 18;   // Very close - max zoom
+  if (distance <= 500) return 16;   // Neighborhood level
+  if (distance <= 1000) return 14;  // Small town level
+  if (distance <= 5000) return 12;  // City level
+  if (distance <= 50000) return 10; // Regional level
+  return 8;                         // Country/continent level
+}
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
@@ -1255,9 +1264,11 @@ function toggleDebugPanel() {
           updateNearbyMarkers();
         }
 
-        function focusOnMyLocation() {
-          if (map && userLocation.value) {
-            map.setView(userLocation.value, 18);
+    
+function focusOnMyLocation() {
+  if (map && userLocation.value) {
+    const zoomLevel = getZoomLevelForDistance(selectedDistance.value);
+    map.setView(userLocation.value, zoomLevel);
             selectedUser.value = null;
             followedUserId.value = null;
             followedUserName.value = '';
@@ -1868,12 +1879,18 @@ function checkForOldMessages() {
           }
         }
 
-        function selectDistance(distance) {
-          selectedDistance.value = distance;
-          if (status.value === 'ONLINE') {
-            fetchNearbyUsers();
-          }
-        }
+       function selectDistance(distance) {
+  selectedDistance.value = distance;
+  if (status.value === 'ONLINE') {
+    fetchNearbyUsers();
+  }
+  
+  // Zoom the map based on selected distance
+  if (map && userLocation.value) {
+    const zoomLevel = getZoomLevelForDistance(distance);
+    map.setView(userLocation.value, zoomLevel);
+  }
+}
 
         async function changeName() {
           const newName = prompt('Enter new name:', user.value);
