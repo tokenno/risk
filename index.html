@@ -1497,26 +1497,36 @@ function initMap(location) {
   try {
     nextTick(() => {
       if (!document.getElementById('map')) {
-        throw new Error('Map container not found');
+        console.error('Map container not found');
+        return;
       }
-      map = L.map('map').setView(location, location[0] === 0 && location[1] === 0 ? 2 : 18);
+      
+      // Only initialize map once
+      if (map) return;
+      
+      // Use default location if invalid
+      const initialLocation = (location && location[0] !== 0 && location[1] !== 0) 
+        ? location 
+        : [51.505, -0.09]; // Default to London coordinates
+      
+      const initialZoom = (location && location[0] !== 0 && location[1] !== 0) ? 18 : 2;
+      
+      map = L.map('map').setView(initialLocation, initialZoom);
+      
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19
       }).addTo(map);
-      if (user.value && location[0] !== 0 && location[1] !== 0) {
-        userMarker = L.marker(location, {
-          icon: L.divIcon({
-            html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-            className: 'user-marker blinking-marker',
-            iconSize: [20, 20]
-          })
-        }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
-      }
+      
       mapInitialized.value = true;
-      map.invalidateSize();
+      
+      // Invalidate size after a small delay to ensure container is rendered
+      setTimeout(() => {
+        if (map) map.invalidateSize();
+      }, 100);
     });
   } catch (error) {
+    console.error('Map initialization failed:', error);
     errorMessage.value = 'Map initialization failed: ' + error.message;
   }
 }
@@ -1714,51 +1724,79 @@ function flashUser(userId) {
   }
   
 
-        function getUserLocation() {
-          if (!navigator.geolocation) {
-            errorMessage.value = 'Geolocation is not supported by your browser';
-            locationStatus.value = 'unavailable';
-            return;
-          }
-          locationStatus.value = 'loading';
-          const timeoutDuration = 10000;
-          const geoTimeout = setTimeout(() => {
-            if (!userLocation.value) {
-              locationStatus.value = 'unavailable';
-              errorMessage.value = 'Location not available or waiting to load map';
-            }
-          }, timeoutDuration);
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              clearTimeout(geoTimeout);
-              userLocation.value = [position.coords.latitude, position.coords.longitude];
-              lastLocationUpdate.value = Date.now();
-              locationStatus.value = 'acquired';
-              errorMessage.value = '';
-              updateUserLocation();
-              
-              if (map) {
-                map.setView(userLocation.value, 18);
-              } else {
-                initMap(userLocation.value);
-              }
-              
-              if (status.value === 'ONLINE') fetchNearbyUsers();
-            },
-            (error) => {
-              clearTimeout(geoTimeout);
-              locationStatus.value = 'unavailable';
-              if (error.code === error.PERMISSION_DENIED) {
-                errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
-              } else if (error.message.includes('permissions policy')) {
-                errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
-              } else {
-                errorMessage.value = 'Location not available or waiting to load map';
-              }
-            },
-            { timeout: timeoutDuration, enableHighAccuracy: true }
-          );
+      function getUserLocation() {
+  if (!navigator.geolocation) {
+    errorMessage.value = 'Geolocation is not supported by your browser';
+    locationStatus.value = 'unavailable';
+    return;
+  }
+  
+  locationStatus.value = 'loading';
+  
+  const timeoutDuration = 10000;
+  const geoTimeout = setTimeout(() => {
+    if (!userLocation.value) {
+      locationStatus.value = 'unavailable';
+      errorMessage.value = 'Location not available';
+      // Initialize map with default location if geolocation fails
+      if (!map) initMap([51.505, -0.09]);
+    }
+  }, timeoutDuration);
+  
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      clearTimeout(geoTimeout);
+      userLocation.value = [position.coords.latitude, position.coords.longitude];
+      lastLocationUpdate.value = Date.now();
+      locationStatus.value = 'acquired';
+      errorMessage.value = '';
+      updateUserLocation();
+      
+      // Initialize map if not already done
+      if (!map) {
+        initMap(userLocation.value);
+      } else {
+        map.setView(userLocation.value, 18);
+      }
+      
+      // Add/update user marker
+      if (user.value) {
+        if (userMarker) {
+          userMarker.setLatLng(userLocation.value);
+        } else {
+          userMarker = L.marker(userLocation.value, {
+            icon: L.divIcon({
+              html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker blinking-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
         }
+      }
+      
+      // Ensure map is properly sized
+      setTimeout(() => {
+        if (map) map.invalidateSize();
+      }, 100);
+      
+      if (status.value === 'ONLINE') fetchNearbyUsers();
+    },
+    (error) => {
+      clearTimeout(geoTimeout);
+      locationStatus.value = 'unavailable';
+      if (error.code === error.PERMISSION_DENIED) {
+        errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
+      } else if (error.message.includes('permissions policy')) {
+        errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
+      } else {
+        errorMessage.value = 'Location not available';
+      }
+      // Initialize map with default location if geolocation fails
+      if (!map) initMap([51.505, -0.09]);
+    },
+    { timeout: timeoutDuration, enableHighAccuracy: true }
+  );
+}
 
         async function updateUserLocation() {
           if (currentUserId.value && userLocation.value) {
