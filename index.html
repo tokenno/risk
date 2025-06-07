@@ -596,14 +596,11 @@
       <button @click="clearMessages" class="warning">Clear All</button>
     </div>
   </div>
-<div v-if="messages.length > 0" class="messages-container">
-  <div v-for="msg in messages" :key="msg.id" class="message">
-    <div style="display: flex; justify-content: space-between; width: 100%;">
-      <div>
-        <strong>{{ msg.from }}:</strong> {{ msg.text }}
-        <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-      </div>
-      <button @click="deleteMessage(msg.id)" class="secondary" style="padding: 2px 5px; font-size: 0.8em;">×</button>
+  <div v-if="messages.length > 0" class="messages-container">
+    <div v-for="msg in messages" :key="msg.id" class="message">
+      <strong>{{ msg.from }}:</strong> {{ msg.text }}
+      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+      <button @click="deleteMessage(msg.id)" class="secondary" style="float: right; padding: 2px 5px; font-size: 0.8em;">×</button>
     </div>
   </div>
 </div>
@@ -779,7 +776,6 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
-          const messageOperationInProgress = ref(false);
           
           const showDebugPanel = ref(false);
             const isSignedIn = ref(false);
@@ -1594,26 +1590,30 @@ async function signOut() {
 
   
   //  sendMessage function
-async function sendMessage() {
-  if (!selectedUser.value || !messageText.value.trim()) return;
-  
-  try {
-    const messageId = Date.now().toString(); // Generate unique ID
-    await db.collection('users').doc(selectedUser.value.id).update({
-      messages: firebase.firestore.FieldValue.arrayUnion({
-        id: messageId, // Add ID here
-        from: user.value,
-        fromId: currentUserId.value,
+  async function sendMessage() {
+    if (!selectedUser.value || !messageText.value.trim()) return;
+    
+    try {
+      await db.collection('users').doc(selectedUser.value.id).update({
+        messages: firebase.firestore.FieldValue.arrayUnion({
+          from: user.value,
+          fromId: currentUserId.value,
+          text: messageText.value,
+          timestamp: new Date().toISOString()
+        })
+      });
+      
+      messages.value.push({
+        from: 'You',
         text: messageText.value,
         timestamp: new Date().toISOString()
-      })
-    });
-    
-    messageText.value = '';
-  } catch (error) {
-    errorMessage.value = "Failed to send message: " + error.message;
+      });
+      
+      messageText.value = '';
+    } catch (error) {
+      errorMessage.value = "Failed to send message: " + error.message;
+    }
   }
-}
   
   //  loadMessages function
 function loadMessages() {
@@ -1623,34 +1623,28 @@ function loadMessages() {
     if (doc.exists) {
       const data = doc.data();
       if (data.messages) {
-        // Ensure each message has an ID
-        const processedMessages = data.messages.map(msg => ({
-          ...msg,
-          id: msg.id || Date.now().toString() // Add ID if missing
-        }));
-        
-        const newMessages = processedMessages
+        const newMessages = data.messages
           .filter(msg => msg.fromId !== currentUserId.value)
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
           .slice(0, 20);
         
-        // Check for new messages
-        if (newMessages.length > messages.value.length || 
-            (newMessages.length > 0 && newMessages[0].id !== messages.value[0]?.id)) {
+        // Check if there are new messages
+        if (newMessages.length > messages.value.length) {
           const latestMessage = newMessages[0];
-          showNewMessageAlert.value = true;
-          newMessageFrom.value = latestMessage.from;
-          if (soundEnabled.value) playMessageSound();
-          
-          setTimeout(() => {
-            showNewMessageAlert.value = false;
-          }, 5000);
+          if (!messages.value.some(msg => msg.id === latestMessage.id)) {
+            showNewMessageAlert.value = true;
+            newMessageFrom.value = latestMessage.from;
+            if (soundEnabled.value) playMessageSound();
+            
+            // Auto-hide alert after 5 seconds
+            setTimeout(() => {
+              showNewMessageAlert.value = false;
+            }, 5000);
+          }
         }
         
         messages.value = newMessages;
         checkForOldMessages();
-      } else {
-        messages.value = [];
       }
     }
   });
@@ -1688,43 +1682,32 @@ function loadMessages() {
 }
 
 async function clearMessages() {
-  if (!currentUserId.value || messageOperationInProgress.value) return;
-  messageOperationInProgress.value = true;
+  if (!currentUserId.value) return;
   
   try {
     await db.collection('users').doc(currentUserId.value).update({
-      messages: []
+      messages: firebase.firestore.FieldValue.delete()
     });
     messages.value = [];
-   } catch (error) {
+  } catch (error) {
     errorMessage.value = "Failed to clear messages: " + error.message;
-  } finally {
-    messageOperationInProgress.value = false;
   }
 }
 
 async function deleteMessage(messageId) {
-  if (!currentUserId.value || messageOperationInProgress.value) return;
-  messageOperationInProgress.value = true;
+  if (!currentUserId.value) return;
   
   try {
     const userDoc = await db.collection('users').doc(currentUserId.value).get();
     if (userDoc.exists) {
       const currentMessages = userDoc.data().messages || [];
       const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
-      
-      // Use set with merge to preserve other fields
-      await db.collection('users').doc(currentUserId.value).set({
+      await db.collection('users').doc(currentUserId.value).update({
         messages: updatedMessages
-      }, { merge: true });
-      
-      // Update local state
-      messages.value = updatedMessages;
+      });
     }
-   } catch (error) {
+  } catch (error) {
     errorMessage.value = "Failed to delete message: " + error.message;
-  } finally {
-    messageOperationInProgress.value = false;
   }
 }
 
@@ -1897,63 +1880,50 @@ function checkForOldMessages() {
           return R * c;
         }
 
-   async function fetchNearbyUsers() {
-  if (!userLocation.value || status.value !== 'ONLINE') {
-    errorMessage.value = 'Location not available or you are offline';
-    return;
-  }
-  
-  nearbyUsers.value = [];
-  loadingNearby.value = true;
-  
-  try {
-    const q = db.collection('users')
-      .where('status', '==', 'ONLINE')
-      .where('lastSeen', '>', new Date(Date.now() - 3600000).toISOString()); // Only users active in last hour
-    
-    const unsubscribe = q.onSnapshot((snapshot) => {
-      const currentUsers = snapshot.docs
-        .filter(doc => doc.id !== currentUserId.value)
-        .map(doc => {
-          const data = doc.data();
-          if (!data.latitude || !data.longitude) return null;
-          
-          const distance = calculateDistance(
-            userLocation.value, 
-            [data.latitude, data.longitude]
-          );
-          
-          return {
-            id: doc.id,
-            name: data.name || 'Anonymous',
-            distance,
-            lastSeen: data.lastSeen,
-            latitude: data.latitude,
-            longitude: data.longitude,
-            status: data.status
-          };
-        })
-        .filter(user => user && user.distance < selectedDistance.value);
-      
-      nearbyUsers.value = currentUsers;
-      loadingNearby.value = false;
-      updateNearbyMarkers();
-      
-      // Play sound for new users
-      if (soundEnabled.value && currentUsers.length > nearbyUsers.value.length) {
-        playNewUserSound();
-      }
-    }, (error) => {
-      errorMessage.value = 'Failed to load nearby users: ' + error.message;
-      loadingNearby.value = false;
-    });
-    
-    return unsubscribe; // Important for cleanup
-  } catch (error) {
-    errorMessage.value = 'Failed to query nearby users: ' + error.message;
-    loadingNearby.value = false;
-  }
-}
+        async function fetchNearbyUsers() {
+          if (!userLocation.value) {
+            errorMessage.value = 'Location not available';
+            return;
+          }
+          nearbyUsers.value = [];
+          loadingNearby.value = true;
+          try {
+            const q = db.collection('users').where('status', '==', 'ONLINE');
+            q.onSnapshot((snapshot) => {
+              const currentUsers = snapshot.docs
+                .filter(doc => {
+                  const data = doc.data();
+                  return doc.id !== currentUserId.value && 
+                         isValidCoordinate(data.latitude) && 
+                         isValidCoordinate(data.longitude);
+                })
+                .map(doc => {
+                  const data = doc.data();
+                  const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+                  const userName = lastKnownUsernames.value[doc.id] || data.name;
+                  return { 
+                    id: doc.id, 
+                    name: userName, 
+                    distance, 
+                    lastSeen: data.lastSeen,
+                    latitude: data.latitude,
+                    longitude: data.longitude,
+                    status: data.status
+                  };
+                })
+                .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
+              nearbyUsers.value = currentUsers;
+              loadingNearby.value = false;
+              updateNearbyMarkers();
+            }, (error) => {
+              errorMessage.value = 'Failed to load nearby users: ' + error.message;
+              loadingNearby.value = false;
+            });
+          } catch (error) {
+            errorMessage.value = 'Failed to query nearby users: ' + error.message;
+            loadingNearby.value = false;
+          }
+        }
 
         async function cleanInvalidUserLocations() {
           try {
