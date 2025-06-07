@@ -368,11 +368,38 @@
   font-size: 0.8em;
   margin-left: 8px;
 }
+    .new-message-alert {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #28a745;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  z-index: 1001;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.message-controls {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
 }
 </style>
 </head>
 <body>
   <div id="app" class="container">
+      <div class="new-message-alert" v-if="showNewMessageAlert">
+  New message from {{ newMessageFrom }}!
+  <button @click="showNewMessageAlert = false" style="margin-left: 10px;">×</button>
+</div>
     <!-- Help Panel -->
     <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
     <div class="help-panel" :class="{ open: showHelp }">
@@ -551,7 +578,7 @@
         Send Location to {{ selectedUser.name }}
       </button>
           
-          <div class="section" v-if="selectedUser">
+        <div class="section" v-if="selectedUser">
   <h3>Messages</h3>
   <div v-if="!isSignedIn" class="message-signin-prompt">
     <p>Sign in to send messages to {{ selectedUser.name }}</p>
@@ -566,12 +593,14 @@
         @keyup.enter="sendMessage"
       >
       <button @click="sendMessage" :disabled="!messageText">Send</button>
+      <button @click="clearMessages" class="warning">Clear All</button>
     </div>
   </div>
   <div v-if="messages.length > 0" class="messages-container">
     <div v-for="msg in messages" :key="msg.id" class="message">
       <strong>{{ msg.from }}:</strong> {{ msg.text }}
       <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+      <button @click="deleteMessage(msg.id)" class="secondary" style="float: right; padding: 2px 5px; font-size: 0.8em;">×</button>
     </div>
   </div>
 </div>
@@ -752,6 +781,9 @@
             const isSignedIn = ref(false);
   const messageText = ref('');
   const messages = ref([]);
+          const showNewMessageAlert = ref(false);
+const newMessageFrom = ref('');
+const messageCleanupInterval = ref(null);
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
@@ -1424,6 +1456,7 @@ function toggleDebugPanel() {
       }
     }
   });
+  messageCleanupInterval.value = setInterval(checkForOldMessages, 60000); // Check every minute
 });
 
 function initMap(location) {
@@ -1525,6 +1558,10 @@ async function signOut() {
     await auth.signOut();
     isSignedIn.value = false;
     messages.value = [];
+         if (messageCleanupInterval.value) {
+      clearInterval(messageCleanupInterval.value);
+      messageCleanupInterval.value = null;
+    }
 
     // 💥 Reset map
     if (map) {
@@ -1579,21 +1616,39 @@ async function signOut() {
   }
   
   //  loadMessages function
-  function loadMessages() {
-    if (!currentUserId.value) return;
-    
-    db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-      if (doc.exists) {
-        const data = doc.data();
-        if (data.messages) {
-          messages.value = data.messages
-            .filter(msg => msg.fromId !== currentUserId.value)
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 20);
+function loadMessages() {
+  if (!currentUserId.value) return;
+  
+  db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.messages) {
+        const newMessages = data.messages
+          .filter(msg => msg.fromId !== currentUserId.value)
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, 20);
+        
+        // Check if there are new messages
+        if (newMessages.length > messages.value.length) {
+          const latestMessage = newMessages[0];
+          if (!messages.value.some(msg => msg.id === latestMessage.id)) {
+            showNewMessageAlert.value = true;
+            newMessageFrom.value = latestMessage.from;
+            if (soundEnabled.value) playMessageSound();
+            
+            // Auto-hide alert after 5 seconds
+            setTimeout(() => {
+              showNewMessageAlert.value = false;
+            }, 5000);
+          }
         }
+        
+        messages.value = newMessages;
+        checkForOldMessages();
       }
-    });
-  }
+    }
+  });
+}
   
   //  clearOldMessages function
   async function clearOldMessages() {
@@ -1607,6 +1662,62 @@ async function signOut() {
       console.error('Error clearing messages:', error);
     }
   }
+      
+      function playMessageSound() {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+  
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1200;
+    gain.gain.value = 0.3;
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    osc.connect(gain).connect(audioContext.destination);
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5);
+  } catch (error) {
+    console.error('Message sound error:', error);
+  }
+}
+
+async function clearMessages() {
+  if (!currentUserId.value) return;
+  
+  try {
+    await db.collection('users').doc(currentUserId.value).update({
+      messages: firebase.firestore.FieldValue.delete()
+    });
+    messages.value = [];
+  } catch (error) {
+    errorMessage.value = "Failed to clear messages: " + error.message;
+  }
+}
+
+async function deleteMessage(messageId) {
+  if (!currentUserId.value) return;
+  
+  try {
+    const userDoc = await db.collection('users').doc(currentUserId.value).get();
+    if (userDoc.exists) {
+      const currentMessages = userDoc.data().messages || [];
+      const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
+      await db.collection('users').doc(currentUserId.value).update({
+        messages: updatedMessages
+      });
+    }
+  } catch (error) {
+    errorMessage.value = "Failed to delete message: " + error.message;
+  }
+}
+
+function checkForOldMessages() {
+  const now = new Date();
+  messages.value = messages.value.filter(msg => {
+    const msgTime = new Date(msg.timestamp);
+    return (now - msgTime) < 15 * 60 * 1000; // 15 minutes
+  });
+}
   
 
         function getUserLocation() {
@@ -1937,11 +2048,15 @@ async function signOut() {
             showDebugPanel,
             toggleDebugPanel,
               isSignedIn,
+            showNewMessageAlert,
+newMessageFrom,
+
     messageText,
     messages,
     signIn,
     signOut,
     sendMessage
+            
         };
       }
     }).mount('#app');
