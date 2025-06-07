@@ -333,11 +333,73 @@
   .debug-panel {
     padding: 15px;
   }
+    .message-signin-prompt {
+  background: #444;
+  padding: 15px;
+  border-radius: 4px;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.message-signin-prompt p {
+  margin-bottom: 10px;
+}
+
+.messages-container {
+  margin-top: 10px;
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.message {
+  padding: 6px;
+  border-bottom: 1px solid #444;
+}
+
+.message:last-child {
+  border-bottom: none;
+}
+
+.message small {
+  color: #888;
+  font-size: 0.8em;
+  margin-left: 8px;
+}
+    .new-message-alert {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background-color: #28a745;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  z-index: 1001;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.message-controls {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+}
 }
 </style>
 </head>
 <body>
   <div id="app" class="container">
+      <div class="new-message-alert" v-if="showNewMessageAlert">
+  New message from {{ newMessageFrom }}!
+  <button @click="showNewMessageAlert = false" style="margin-left: 10px;">×</button>
+</div>
     <!-- Help Panel -->
     <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
     <div class="help-panel" :class="{ open: showHelp }">
@@ -425,6 +487,8 @@
         </div>
         <div class="map-controls" v-if="mapInitialized">
           <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+         <button @click="toggleDebugPanel" class="secondary">Debug</button>
+      <button @click="toggleHelp" class="secondary">Help</button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -435,16 +499,22 @@
         <span>{{ user.charAt(0).toUpperCase() }}</span>
         <div>
           <div>{{ user }}</div>
+              
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
+   
         </div>
       </div>
         <br>
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
+        
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-        <button @click="toggleDebugPanel" class="secondary">Debug</button>
-      <button @click="toggleHelp" class="secondary">Help</button>
+        <button v-if="isSignedIn" @click="signOut" class="secondary">Sign Out</button>
+
+        
+        
+ 
     </div>
 
     <div class="section audio-permission" v-if="showAudioPermission">
@@ -470,6 +540,33 @@
       </div>
       <div v-if="groupAlertMessage" class="error">{{ groupAlertMessage }}</div>
     </div>
+      
+        <div v-else>
+  <!-- Nearby users display -->
+  <div v-for="user in nearbyUsers" 
+       :key="user.id" 
+       class="user-list"
+       :class="{ selected: selectedUser?.id === user.id }">
+    <input 
+      type="checkbox" 
+      :value="user.id" 
+      v-model="selectedUsersForGroup" 
+      @click.stop 
+      :disabled="user.id === currentUserId"
+    >
+    <div @click="selectUser(user)">{{ user.name }}</div>
+    <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
+    <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+    <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
+    <button 
+      v-if="user.id !== currentUserId" 
+      @click.stop="toggleFollow(user)"
+      :class="{ following: followedUserId === user.id }"
+      class="secondary"
+    >
+      {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+    </button>
+  </div>
 
     <div class="section">
       <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
@@ -507,59 +604,77 @@
       >
         Send Location to {{ selectedUser.name }}
       </button>
+          
+        
+<div class="section" v-if="selectedUser">
+  <h3>
+    Messages
+    <button @click="toggleChat" class="secondary" style="float: right;">
+      {{ showChat ? 'Close Chat' : 'Open Chat' }}
+    </button>
+  </h3>
+  
+  <div v-if="showChat">
+    <div v-if="!isSignedIn" class="message-signin-prompt">
+      <p>Sign in to send messages to {{ selectedUser.name }}</p>
+      <button @click="signIn" class="secondary">Sign In</button>
+    </div>
+    <div v-else>
+      <div class="button-group">
+        <input 
+          type="text" 
+          v-model="messageText" 
+          placeholder="Type your message"
+          @keyup.enter="sendMessage"
+        >
+        <button @click="sendMessage" :disabled="!messageText">Send</button>
+        <button @click="clearMessages" class="warning">Clear All</button>
+      </div>
+    </div>
+    <div v-if="messages.length > 0" class="messages-container">
+      <div v-for="msg in messages" :key="msg.id" class="message">
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <div>
+            <strong>{{ msg.from }}:</strong> {{ msg.text }}
+            <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+          </div>
+          <button @click="deleteMessage(msg.id)" class="secondary" style="padding: 2px 5px; font-size: 0.8em;">×</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+          
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
-      <div v-if="groupUsers.length">
-        <div v-for="user in groupUsers" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }"
-             @click="selectUser(user)">
-          <div>{{ user.name }}</div>
-          <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
-      </div>
-      <div v-else>
-        <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }">
-          <input 
-            type="checkbox" 
-            :value="user.id" 
-            v-model="selectedUsersForGroup" 
-            @click.stop 
-            :disabled="user.id === currentUserId"
-          >
-          <div @click="selectUser(user)">{{ user.name }}</div>
-          <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
-      </div>
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-    </div>
+   <div v-if="groupUsers.length">
+  <!-- Group users display -->
+  <div v-for="user in groupUsers" 
+       :key="user.id" 
+       class="user-list"
+       :class="{ selected: selectedUser?.id === user.id }"
+       @click="selectUser(user)">
+    <div>{{ user.name }}</div>
+    <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
+    <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+    <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+    <button 
+      v-if="user.id !== currentUserId" 
+      @click.stop="toggleFollow(user)"
+      :class="{ following: followedUserId === user.id }"
+      class="secondary"
+    >
+      {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+    </button>
+  </div>
+</div>
+
+</div>
+          
+          
 
  <div class="debug-panel" :class="{ open: showDebugPanel }">
   <button class="close-debug" @click="toggleDebugPanel">×</button>
@@ -586,6 +701,8 @@
   </div>
   <button @click="forceRefresh">Force Refresh</button>
 </div>
+          
+          
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -679,9 +796,35 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+          const messageOperationInProgress = ref(false);
+          const showChat = ref(true);
           
           const showDebugPanel = ref(false);
+            const isSignedIn = ref(false);
+  const messageText = ref('');
+  const messages = ref([]);
+          const showNewMessageAlert = ref(false);
+const newMessageFrom = ref('');
+const messageCleanupInterval = ref(null);
+          
+          function getZoomLevelForDistance(distance) {
+  if (distance <= 100) return 18;   // Very close - max zoom
+  if (distance <= 500) return 16;   // Neighborhood level
+  if (distance <= 1000) return 14;  // Small town level
+  if (distance <= 5000) return 12;  // City level
+  if (distance <= 50000) return 10; // Regional level
+  return 8;                         // Country/continent level
+}
 
+function toggleChat() {
+  showChat.value = !showChat.value;
+  if (showChat.value && selectedUser.value) {
+    loadMessages();
+  } else {
+    messages.value = []; // Clear messages when chat is closed
+  }
+}
+          
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
 }
@@ -1104,6 +1247,7 @@ function toggleDebugPanel() {
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
           }
+            
         }
 
         function toggleFollow(user) {
@@ -1140,9 +1284,11 @@ function toggleDebugPanel() {
           updateNearbyMarkers();
         }
 
-        function focusOnMyLocation() {
-          if (map && userLocation.value) {
-            map.setView(userLocation.value, 18);
+    
+function focusOnMyLocation() {
+  if (map && userLocation.value) {
+    const zoomLevel = getZoomLevelForDistance(selectedDistance.value);
+    map.setView(userLocation.value, zoomLevel);
             selectedUser.value = null;
             followedUserId.value = null;
             followedUserName.value = '';
@@ -1273,92 +1419,382 @@ function toggleDebugPanel() {
           }
         });
 
-        onMounted(() => {
-          firebaseInitialized.value = initializeFirebase();
-          if (!firebaseInitialized.value) {
-            errorMessage.value = 'Failed to initialize Firebase. Please check your network or Firebase configuration.';
-            return;
+      onMounted(() => {
+  firebaseInitialized.value = initializeFirebase();
+  if (!firebaseInitialized.value) {
+    errorMessage.value = 'Failed to initialize Firebase. Please check your network or Firebase configuration.';
+    return;
+  }
+  initAudio();
+  // Initialize map with default location
+  initMap([0, 0]); // Default to [0, 0] with low zoom
+  // Attempt to get user location
+  getUserLocation();
+
+  auth.onAuthStateChanged((userData) => {
+    if (userData) {
+      isSignedIn.value = true;
+      currentUserId.value = userData.uid;
+      user.value = userData.displayName || 'Anonymous';
+      loadMessages();
+      db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+        if (!doc.exists) {
+          console.warn('User document does not exist');
+          return;
+        }
+        const data = doc.data();
+        if (!data) {
+          console.warn('No data in user document');
+          return;
+        }
+        try {
+          if (
+            data.status === 'ONLINE' &&
+            data.lastPoke &&
+            data.lastPoke.fromId !== currentUserId.value
+          ) {
+            alert(`You were poked by ${data.lastPoke.from}!`);
+            if (soundEnabled.value) playPokeSound();
+            db.collection('users').doc(currentUserId.value).update({
+              lastPoke: firebase.firestore.FieldValue.delete()
+            }).catch(error => {
+              console.error('Failed to clear lastPoke:', error);
+            });
           }
-          initAudio();
-          auth.onAuthStateChanged((userData) => {
-            if (userData) {
-              currentUserId.value = userData.uid;
-              user.value = userData.displayName || 'Anonymous';
-              nearbyUsers.value = [];
-              getUserLocation();
-             
-        db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-  if (!doc.exists) {
-    console.warn('User document does not exist');
-    return;
-  }
-  const data = doc.data();
-  if (!data) {
-    console.warn('No data in user document');
-    return;
-  }
-  try {
-    if (
-      data.status === 'ONLINE' && // Use Firestore state for consistency
-      data.lastPoke &&
-      data.lastPoke.fromId !== currentUserId.value
-    ) {
-      alert(`You were poked by ${data.lastPoke.from}!`);
-      if (soundEnabled.value) playPokeSound();
-      // Clear poke to prevent repeated alerts
-      db.collection('users').doc(currentUserId.value).update({
-        lastPoke: firebase.firestore.FieldValue.delete()
-      }).catch(error => {
-        console.error('Failed to clear lastPoke:', error);
+          if (
+            data.status === 'ONLINE' &&
+            data.receivedLocation &&
+            data.receivedLocation.fromId !== currentUserId.value
+          ) {
+            alert(`Received location from ${data.receivedLocation.from}!
+                   Lat: ${data.receivedLocation.latitude.toFixed(6)}
+                   Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
+            if (map) {
+              const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
+              L.marker(receivedLoc, {
+                icon: L.divIcon({
+                  html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
+                  className: 'received-location-marker',
+                  iconSize: [20, 20]
+                })
+              }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received`);
+              map.setView(receivedLoc, 13);
+            }
+            db.collection('users').doc(currentUserId.value).update({
+              receivedLocation: firebase.firestore.FieldValue.delete()
+            }).catch(error => {
+              console.error('Failed to clear receivedLocation:', error);
+            });
+          }
+        } catch (error) {
+          console.error('Error processing snapshot:', error);
+        }
+      }, (error) => {
+        console.error('Snapshot listener error:', error);
       });
+    } else {
+      isSignedIn.value = false;
+      if (navigator.geolocation) {
+        getUserLocation();
+      }
     }
-    if (
-      data.status === 'ONLINE' &&
-      data.receivedLocation &&
-      data.receivedLocation.fromId !== currentUserId.value
-    ) {
-      alert(`Received location from ${data.receivedLocation.from}!
-             Lat: ${data.receivedLocation.latitude.toFixed(6)}
-             Lon: ${data.receivedLocation.longitude.toFixed(6)}`);
-      if (map) {
-        const receivedLoc = [data.receivedLocation.latitude, data.receivedLocation.longitude];
-        L.marker(receivedLoc, {
+  });
+  messageCleanupInterval.value = setInterval(checkForOldMessages, 60000); // Check every minute
+});
+
+function initMap(location) {
+  try {
+    nextTick(() => {
+      if (!document.getElementById('map')) {
+        throw new Error('Map container not found');
+      }
+      map = L.map('map').setView(location, location[0] === 0 && location[1] === 0 ? 2 : 18);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+      }).addTo(map);
+      if (user.value && location[0] !== 0 && location[1] !== 0) {
+        userMarker = L.marker(location, {
           icon: L.divIcon({
-            html: `<div style="background-color: #ff00ff; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${data.receivedLocation.from.charAt(0).toUpperCase()}</div>`,
-            className: 'received-location-marker',
+            html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+            className: 'user-marker blinking-marker',
             iconSize: [20, 20]
           })
-        }).addTo(map).bindPopup(`<b>${data.receivedLocation.from}'s Location</b><br>Received`);
-        map.setView(receivedLoc, 13);
+        }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
       }
-      // Clear receivedLocation to prevent repeated alerts
-      db.collection('users').doc(currentUserId.value).update({
-        receivedLocation: firebase.firestore.FieldValue.delete()
-      }).catch(error => {
-        console.error('Failed to clear receivedLocation:', error);
-      });
-    }
+      mapInitialized.value = true;
+      map.invalidateSize();
+    });
   } catch (error) {
-    console.error('Error processing snapshot:', error);
+    errorMessage.value = 'Map initialization failed: ' + error.message;
   }
-}, (error) => {
-  console.error('Snapshot listener error:', error);
-});
-            } else {
-              errorMessage.value = 'Please sign in';
-              signIn();
-            }
-          });
-        });
+}
 
-        async function signIn() {
-          try {
-            await auth.signInAnonymously();
-            console.log('Signed in anonymously');
-          } catch (error) {
-            errorMessage.value = 'Anonymous sign-in failed: ' + error.message;
+function getUserLocation() {
+  if (!navigator.geolocation) {
+    errorMessage.value = 'Geolocation is not supported by your browser';
+    locationStatus.value = 'unavailable';
+    return;
+  }
+  locationStatus.value = 'loading';
+  const timeoutDuration = 10000;
+  const geoTimeout = setTimeout(() => {
+    if (!userLocation.value) {
+      locationStatus.value = 'unavailable';
+      errorMessage.value = 'Location not available';
+    }
+  }, timeoutDuration);
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      clearTimeout(geoTimeout);
+      userLocation.value = [position.coords.latitude, position.coords.longitude];
+      lastLocationUpdate.value = Date.now();
+      locationStatus.value = 'acquired';
+      errorMessage.value = '';
+      updateUserLocation();
+      if (map) {
+        map.setView(userLocation.value, 18);
+        if (userMarker) {
+          userMarker.setLatLng(userLocation.value);
+        } else if (user.value) {
+          userMarker = L.marker(userLocation.value, {
+            icon: L.divIcon({
+              html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker blinking-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+        }
+        map.invalidateSize();
+      }
+      if (status.value === 'ONLINE') fetchNearbyUsers();
+    },
+    (error) => {
+      clearTimeout(geoTimeout);
+      locationStatus.value = 'unavailable';
+      if (error.code === error.PERMISSION_DENIED) {
+        errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
+      } else if (error.message.includes('permissions policy')) {
+        errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
+      } else {
+        errorMessage.value = 'Location not available';
+      }
+    },
+    { timeout: timeoutDuration, enableHighAccuracy: true }
+  );
+}
+
+   //  signIn function
+  async function signIn() {
+    try {
+      await auth.signInAnonymously();
+      isSignedIn.value = true;
+      console.log('Signed in anonymously');
+    } catch (error) {
+      errorMessage.value = 'Sign-in failed: ' + error.message;
+    }
+  }
+  
+  // signOut function
+async function signOut() {
+  try {
+    await auth.signOut();
+    isSignedIn.value = false;
+    messages.value = [];
+         if (messageCleanupInterval.value) {
+      clearInterval(messageCleanupInterval.value);
+      messageCleanupInterval.value = null;
+    }
+
+    // 💥 Reset map
+    if (map) {
+      map.remove();
+      map = null;
+      userMarker = null;
+      nearbyMarkers.forEach(marker => marker.remove());
+      nearbyMarkers = [];
+      if (selectedUserMarker) {
+        selectedUserMarker.remove();
+        selectedUserMarker = null;
+      }
+      mapInitialized.value = false;
+    }
+
+    // Reset user state that may prevent re-init
+    user.value = null;
+    currentUserId.value = null;
+    status.value = 'OFFLINE';
+    userLocation.value = null;
+    locationStatus.value = 'loading';
+  } catch (error) {
+    errorMessage.value = 'Sign-out failed: ' + error.message;
+  }
+}
+
+  
+  //  sendMessage function
+async function sendMessage() {
+  if (!selectedUser.value || !messageText.value.trim()) return;
+
+  try {
+    const messageId = Date.now().toString(); // Generate unique ID
+    const messageData = {
+      id: messageId,
+      from: user.value,
+      fromId: currentUserId.value,
+      toId: selectedUser.value.id,
+      text: messageText.value,
+      timestamp: new Date().toISOString()
+    };
+
+    // Add message to recipient's messages array
+    await db.collection('users').doc(selectedUser.value.id).update({
+      messages: firebase.firestore.FieldValue.arrayUnion(messageData)
+    });
+
+    // Add message to sender's messages array
+    await db.collection('users').doc(currentUserId.value).update({
+      messages: firebase.firestore.FieldValue.arrayUnion(messageData)
+    });
+
+    // Optionally, add the sent message to the local messages array immediately
+    messages.value.unshift(messageData); // Add to the start of the array
+    messageText.value = ''; // Clear input
+  } catch (error) {
+    errorMessage.value = "Failed to send message: " + error.message;
+  }
+}
+  //  loadMessages function
+function loadMessages() {
+  if (!currentUserId.value || !selectedUser.value) return;
+
+  db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
+    if (doc.exists) {
+      const data = doc.data();
+      if (data.messages) {
+        // Filter messages for the conversation with selectedUser
+        const conversationMessages = data.messages
+          .filter(msg => 
+            (msg.fromId === currentUserId.value && msg.toId === selectedUser.value.id) ||
+            (msg.fromId === selectedUser.value.id && msg.toId === currentUserId.value)
+          )
+          .map(msg => ({
+            ...msg,
+            id: msg.id || Date.now().toString() // Ensure each message has an ID
+          }))
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, 20); // Limit to 20 most recent messages
+
+        // Check for new messages
+        if (conversationMessages.length > messages.value.length || 
+            (conversationMessages.length > 0 && conversationMessages[0].id !== messages.value[0]?.id)) {
+          const latestMessage = conversationMessages[0];
+          if (latestMessage.fromId !== currentUserId.value) {
+            showNewMessageAlert.value = true;
+            newMessageFrom.value = latestMessage.from;
+            if (soundEnabled.value) playMessageSound();
+            setTimeout(() => {
+              showNewMessageAlert.value = false;
+            }, 5000);
           }
         }
+
+        messages.value = conversationMessages;
+        checkForOldMessages();
+      } else {
+        messages.value = [];
+      }
+    }
+  });
+}
+  
+  //  clearOldMessages function
+  async function clearOldMessages() {
+    if (!currentUserId.value) return;
+    
+    try {
+      await db.collection('users').doc(currentUserId.value).update({
+        messages: firebase.firestore.FieldValue.delete()
+      });
+    } catch (error) {
+      console.error('Error clearing messages:', error);
+    }
+  }
+      
+      function playMessageSound() {
+  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
+  
+  try {
+    const osc = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = 1200;
+    gain.gain.value = 0.3;
+    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+    osc.connect(gain).connect(audioContext.destination);
+    osc.start();
+    osc.stop(audioContext.currentTime + 0.5);
+  } catch (error) {
+    console.error('Message sound error:', error);
+  }
+}
+
+async function clearMessages() {
+  if (!currentUserId.value) return;
+  
+  try {
+    // Use set with merge to preserve other fields
+    await db.collection('users').doc(currentUserId.value).set({
+      messages: []
+    }, { merge: true });
+    
+    // Update local state
+    messages.value = [];
+  } catch (error) {
+    errorMessage.value = "Failed to clear messages: " + error.message;
+  }
+}
+
+async function deleteMessage(messageId) {
+  if (!currentUserId.value) return;
+
+  try {
+    const userDoc = await db.collection('users').doc(currentUserId.value).get();
+    if (userDoc.exists) {
+      const currentMessages = userDoc.data().messages || [];
+      const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
+
+      await db.collection('users').doc(currentUserId.value).update({
+        messages: updatedMessages
+      });
+
+      // Optionally, update the recipient's messages array
+      if (selectedUser.value) {
+        const recipientDoc = await db.collection('users').doc(selectedUser.value.id).get();
+        if (recipientDoc.exists) {
+          const recipientMessages = recipientDoc.data().messages || [];
+          const updatedRecipientMessages = recipientMessages.filter(msg => msg.id !== messageId);
+          await db.collection('users').doc(selectedUser.value.id).update({
+            messages: updatedRecipientMessages
+          });
+        }
+      }
+
+      messages.value = updatedMessages;
+    }
+  } catch (error) {
+    errorMessage.value = "Failed to delete message: " + error.message;
+  }
+}
+
+function checkForOldMessages() {
+  const now = new Date();
+  messages.value = messages.value.filter(msg => {
+    const msgTime = new Date(msg.timestamp);
+    return (now - msgTime) < 15 * 60 * 1000; // 15 minutes
+  });
+}
+  
 
         function getUserLocation() {
           if (!navigator.geolocation) {
@@ -1483,12 +1919,18 @@ function toggleDebugPanel() {
           }
         }
 
-        function selectDistance(distance) {
-          selectedDistance.value = distance;
-          if (status.value === 'ONLINE') {
-            fetchNearbyUsers();
-          }
-        }
+       function selectDistance(distance) {
+  selectedDistance.value = distance;
+  if (status.value === 'ONLINE') {
+    fetchNearbyUsers();
+  }
+  
+  // Zoom the map based on selected distance
+  if (map && userLocation.value) {
+    const zoomLevel = getZoomLevelForDistance(distance);
+    map.setView(userLocation.value, zoomLevel);
+  }
+}
 
         async function changeName() {
           const newName = prompt('Enter new name:', user.value);
@@ -1520,50 +1962,63 @@ function toggleDebugPanel() {
           return R * c;
         }
 
-        async function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
+async function fetchNearbyUsers() {
+  if (!userLocation.value || status.value !== 'ONLINE') {
+    errorMessage.value = 'Location not available or you are offline';
+    return;
+  }
+  
+  nearbyUsers.value = [];
+  loadingNearby.value = true;
+  
+  try {
+    const q = db.collection('users')
+      .where('status', '==', 'ONLINE')
+      .where('lastSeen', '>', new Date(Date.now() - 3600000).toISOString());
+    
+    const unsubscribe = q.onSnapshot((snapshot) => {
+      const currentUsers = snapshot.docs
+        .filter(doc => doc.id !== currentUserId.value)
+        .map(doc => {
+          const data = doc.data();
+          if (!data.latitude || !data.longitude) {
+            console.warn('User missing coordinates:', doc.id, data.name);
+            return null;
           }
-          nearbyUsers.value = [];
-          loadingNearby.value = true;
-          try {
-            const q = db.collection('users').where('status', '==', 'ONLINE');
-            q.onSnapshot((snapshot) => {
-              const currentUsers = snapshot.docs
-                .filter(doc => {
-                  const data = doc.data();
-                  return doc.id !== currentUserId.value && 
-                         isValidCoordinate(data.latitude) && 
-                         isValidCoordinate(data.longitude);
-                })
-                .map(doc => {
-                  const data = doc.data();
-                  const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                  const userName = lastKnownUsernames.value[doc.id] || data.name;
-                  return { 
-                    id: doc.id, 
-                    name: userName, 
-                    distance, 
-                    lastSeen: data.lastSeen,
-                    latitude: data.latitude,
-                    longitude: data.longitude,
-                    status: data.status
-                  };
-                })
-                .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
-              nearbyUsers.value = currentUsers;
-              loadingNearby.value = false;
-              updateNearbyMarkers();
-            }, (error) => {
-              errorMessage.value = 'Failed to load nearby users: ' + error.message;
-              loadingNearby.value = false;
-            });
-          } catch (error) {
-            errorMessage.value = 'Failed to query nearby users: ' + error.message;
-            loadingNearby.value = false;
-          }
-        }
+          
+          const distance = calculateDistance(
+            userLocation.value, 
+            [data.latitude, data.longitude]
+          );
+          
+          const userObj = {
+            id: doc.id,
+            name: data.name || 'Anonymous',
+            distance,
+            lastSeen: data.lastSeen,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            status: data.status
+          };
+          
+          console.log('Processed user:', userObj); // Debug log
+          return userObj;
+        })
+        .filter(user => user && user.distance < selectedDistance.value);
+      
+      console.log('Filtered users:', currentUsers); // Debug log
+      nearbyUsers.value = currentUsers;
+      loadingNearby.value = false;
+      updateNearbyMarkers();
+    });
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    errorMessage.value = 'Failed to query nearby users: ' + error.message;
+    loadingNearby.value = false;
+  }
+}
 
         async function cleanInvalidUserLocations() {
           try {
@@ -1686,7 +2141,18 @@ function toggleDebugPanel() {
           toggleHelp,
           selectedUsersForGroup,
             showDebugPanel,
-            toggleDebugPanel
+            toggleDebugPanel,
+              isSignedIn,
+            showNewMessageAlert,
+newMessageFrom,
+  toggleChat,
+    messageText,
+    messages,
+    signIn,
+    signOut,
+    sendMessage,
+               showChat
+            
         };
       }
     }).mount('#app');
