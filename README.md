@@ -1,4 +1,4 @@
-FindMe
+Sly
 
 Location-Based Social Networking App
 
