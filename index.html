@@ -1504,94 +1504,71 @@ function toggleDebugPanel() {
   });
 });
 
-function initMap(location) {
-  try {
-    nextTick(() => {
-      if (!document.getElementById('map')) {
-        console.error('Map container not found');
-        return;
-      }
-      
-      // Only initialize map once
-      if (map) return;
-      
-      // Use default location if invalid
-      const initialLocation = (location && location[0] !== 0 && location[1] !== 0) 
-        ? location 
-        : [51.505, -0.09]; // Default to London coordinates
-      
-      const initialZoom = (location && location[0] !== 0 && location[1] !== 0) ? 18 : 2;
-      
-      map = L.map('map').setView(initialLocation, initialZoom);
-      
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19
-      }).addTo(map);
-      
-      mapInitialized.value = true;
-      
-      // Invalidate size after a small delay to ensure container is rendered
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 100);
-    });
-  } catch (error) {
-    console.error('Map initialization failed:', error);
-    errorMessage.value = 'Map initialization failed: ' + error.message;
-  }
-}
+function initMap(location, retries = 3, delay = 1000) {
+  waitForLeaflet(() => {
+    try {
+      nextTick(() => {
+        if (!document.getElementById('map')) {
+          if (retries > 0) {
+            console.warn(`Map container not found, retrying ${retries} more times`);
+            setTimeout(() => initMap(location, retries - 1, delay), delay);
+            return;
+          }
+          console.error('Map container not found after retries');
+          errorMessage.value = 'Map container not found in DOM';
+          return;
+        }
+        if (map) {
+          console.warn('Map already initialized, updating location');
+          map.setView(location, 18);
+          map.invalidateSize();
+          return;
+        }
 
-function getUserLocation() {
-  if (!navigator.geolocation) {
-    errorMessage.value = 'Geolocation is not supported by your browser';
-    locationStatus.value = 'unavailable';
-    initMap([51.505, -0.09]); // Initialize with fallback if geolocation unsupported
-    return;
-  }
+        const initialLocation = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1]))
+          ? location
+          : [51.505, -0.09];
+        const initialZoom = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) ? 18 : 13;
 
-  locationStatus.value = 'loading';
-  const timeoutDuration = 10000;
-  const geoTimeout = setTimeout(() => {
-    if (!userLocation.value) {
-      locationStatus.value = 'unavailable';
-      errorMessage.value = 'Location not available';
-      initMap([51.505, -0.09]); // Initialize with fallback on timeout
-    }
-  }, timeoutDuration);
+        map = L.map('map').setView(initialLocation, initialZoom);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19
+        }).addTo(map);
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      clearTimeout(geoTimeout);
-      userLocation.value = [position.coords.latitude, position.coords.longitude];
-      lastLocationUpdate.value = Date.now();
-      locationStatus.value = 'acquired';
-      errorMessage.value = '';
-      updateUserLocation();
-      initMap(userLocation.value); // Initialize map with actual location
-      if (status.value === 'ONLINE') fetchNearbyUsers();
-    },
-    (error) => {
-      clearTimeout(geoTimeout);
-      locationStatus.value = 'unavailable';
-      if (error.code === error.PERMISSION_DENIED) {
-        errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
-      } else if (error.message.includes('permissions policy')) {
-        errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
+        if (user.value && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) {
+          userMarker = L.marker(location, {
+            icon: L.divIcon({
+              html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker blinking-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+        }
+
+        mapInitialized.value = true;
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 100);
+      });
+    } catch (error) {
+      console.error('Map initialization failed:', error);
+      if (retries > 0) {
+        console.warn(`Retrying map initialization, ${retries} attempts left`);
+        setTimeout(() => initMap(location, retries - 1, delay), delay);
       } else {
-        errorMessage.value = 'Location not available';
+        errorMessage.value = 'Map initialization failed after retries: ' + error.message;
       }
-      initMap([51.505, -0.09]); // Initialize with fallback on error
-    },
-    { timeout: timeoutDuration, enableHighAccuracy: true }
-  );
+    }
+  });
 }
+      
 async function signIn() {
   try {
     await auth.signInAnonymously();
     isSignedIn.value = true;
     console.log('Signed in anonymously');
-    getUserLocation(); // Reinitialize map after sign-in
+    getUserLocation();
   } catch (error) {
     errorMessage.value = 'Sign-in failed: ' + error.message;
   }
@@ -1629,6 +1606,18 @@ async function signOut() {
   }
 }
 
+      function waitForLeaflet(callback) {
+  if (typeof L !== 'undefined') {
+    callback();
+    return;
+  }
+  const script = document.querySelector('script[src*="leaflet"]');
+  if (script) {
+    script.addEventListener('load', callback);
+  } else {
+    setTimeout(() => waitForLeaflet(callback), 100);
+  }
+}
   
   //  sendMessage function
   async function sendMessage() {
