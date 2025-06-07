@@ -421,6 +421,11 @@
         </div>
         <div class="map-controls" v-if="mapInitialized">
           <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+              <button @click="toggleAnonymityMode" :class="{ active: anonymityMode }" class="secondary">
+        {{ anonymityMode ? 'Disable Anonymity' : ' Anonymity' }}
+      </button>
+               <button @click="toggleDebugPanel" class="secondary">Debug</button>
+      <button @click="toggleHelp" class="secondary">Help</button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -444,8 +449,7 @@
       <button @click="toggleAnonymityMode" :class="{ active: anonymityMode }" class="secondary">
         {{ anonymityMode ? 'Disable Anonymity' : ' Anonymity' }}
       </button>
-      <button @click="toggleDebugPanel" class="secondary">Debug</button>
-      <button @click="toggleHelp" class="secondary">Help</button>
+   
     </div>
 
     <div class="section audio-permission" v-if="showAudioPermission">
