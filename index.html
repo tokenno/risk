@@ -606,36 +606,45 @@
       </button>
           
         
-          
-        <div class="section" v-if="selectedUser">
-  <h3>Messages</h3>
-  <div v-if="!isSignedIn" class="message-signin-prompt">
-    <p>Sign in to send messages to {{ selectedUser.name }}</p>
-    <button @click="signIn" class="secondary">Sign In</button>
-  </div>
-  <div v-else>
-    <div class="button-group">
-      <input 
-        type="text" 
-        v-model="messageText" 
-        placeholder="Type your message"
-        @keyup.enter="sendMessage"
-      >
-      <button @click="sendMessage" :disabled="!messageText">Send</button>
-      <button @click="clearMessages" class="warning">Clear All</button>
+<div class="section" v-if="selectedUser">
+  <h3>
+    Messages
+    <button @click="toggleChat" class="secondary" style="float: right;">
+      {{ showChat ? 'Close Chat' : 'Open Chat' }}
+    </button>
+  </h3>
+  
+  <div v-if="showChat">
+    <div v-if="!isSignedIn" class="message-signin-prompt">
+      <p>Sign in to send messages to {{ selectedUser.name }}</p>
+      <button @click="signIn" class="secondary">Sign In</button>
     </div>
-  </div>
-<div v-if="messages.length > 0" class="messages-container">
-  <div v-for="msg in messages" :key="msg.id" class="message">
-    <div style="display: flex; justify-content: space-between; width: 100%;">
-      <div>
-        <strong>{{ msg.from }}:</strong> {{ msg.text }}
-        <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+    <div v-else>
+      <div class="button-group">
+        <input 
+          type="text" 
+          v-model="messageText" 
+          placeholder="Type your message"
+          @keyup.enter="sendMessage"
+        >
+        <button @click="sendMessage" :disabled="!messageText">Send</button>
+        <button @click="clearMessages" class="warning">Clear All</button>
       </div>
-      <button @click="deleteMessage(msg.id)" class="secondary" style="padding: 2px 5px; font-size: 0.8em;">×</button>
+    </div>
+    <div v-if="messages.length > 0" class="messages-container">
+      <div v-for="msg in messages" :key="msg.id" class="message">
+        <div style="display: flex; justify-content: space-between; width: 100%;">
+          <div>
+            <strong>{{ msg.from }}:</strong> {{ msg.text }}
+            <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+          </div>
+          <button @click="deleteMessage(msg.id)" class="secondary" style="padding: 2px 5px; font-size: 0.8em;">×</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
+          
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
@@ -788,6 +797,7 @@
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
           const messageOperationInProgress = ref(false);
+          const showChat = ref(true);
           
           const showDebugPanel = ref(false);
             const isSignedIn = ref(false);
@@ -806,6 +816,15 @@ const messageCleanupInterval = ref(null);
   return 8;                         // Country/continent level
 }
 
+function toggleChat() {
+  showChat.value = !showChat.value;
+  if (showChat.value && selectedUser.value) {
+    loadMessages();
+  } else {
+    messages.value = []; // Clear messages when chat is closed
+  }
+}
+          
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
 }
@@ -1228,6 +1247,7 @@ function toggleDebugPanel() {
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
             updateUserBeeps();
           }
+            
         }
 
         function toggleFollow(user) {
@@ -1615,58 +1635,71 @@ async function signOut() {
   //  sendMessage function
 async function sendMessage() {
   if (!selectedUser.value || !messageText.value.trim()) return;
-  
+
   try {
     const messageId = Date.now().toString(); // Generate unique ID
+    const messageData = {
+      id: messageId,
+      from: user.value,
+      fromId: currentUserId.value,
+      toId: selectedUser.value.id,
+      text: messageText.value,
+      timestamp: new Date().toISOString()
+    };
+
+    // Add message to recipient's messages array
     await db.collection('users').doc(selectedUser.value.id).update({
-      messages: firebase.firestore.FieldValue.arrayUnion({
-        id: messageId, // Add ID here
-        from: user.value,
-        fromId: currentUserId.value,
-        text: messageText.value,
-        timestamp: new Date().toISOString()
-      })
+      messages: firebase.firestore.FieldValue.arrayUnion(messageData)
     });
-    
-    messageText.value = '';
+
+    // Add message to sender's messages array
+    await db.collection('users').doc(currentUserId.value).update({
+      messages: firebase.firestore.FieldValue.arrayUnion(messageData)
+    });
+
+    // Optionally, add the sent message to the local messages array immediately
+    messages.value.unshift(messageData); // Add to the start of the array
+    messageText.value = ''; // Clear input
   } catch (error) {
     errorMessage.value = "Failed to send message: " + error.message;
   }
 }
-  
   //  loadMessages function
 function loadMessages() {
-  if (!currentUserId.value) return;
-  
+  if (!currentUserId.value || !selectedUser.value) return;
+
   db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
     if (doc.exists) {
       const data = doc.data();
       if (data.messages) {
-        // Ensure each message has an ID
-        const processedMessages = data.messages.map(msg => ({
-          ...msg,
-          id: msg.id || Date.now().toString() // Add ID if missing
-        }));
-        
-        const newMessages = processedMessages
-          .filter(msg => msg.fromId !== currentUserId.value)
+        // Filter messages for the conversation with selectedUser
+        const conversationMessages = data.messages
+          .filter(msg => 
+            (msg.fromId === currentUserId.value && msg.toId === selectedUser.value.id) ||
+            (msg.fromId === selectedUser.value.id && msg.toId === currentUserId.value)
+          )
+          .map(msg => ({
+            ...msg,
+            id: msg.id || Date.now().toString() // Ensure each message has an ID
+          }))
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(0, 20);
-        
+          .slice(0, 20); // Limit to 20 most recent messages
+
         // Check for new messages
-        if (newMessages.length > messages.value.length || 
-            (newMessages.length > 0 && newMessages[0].id !== messages.value[0]?.id)) {
-          const latestMessage = newMessages[0];
-          showNewMessageAlert.value = true;
-          newMessageFrom.value = latestMessage.from;
-          if (soundEnabled.value) playMessageSound();
-          
-          setTimeout(() => {
-            showNewMessageAlert.value = false;
-          }, 5000);
+        if (conversationMessages.length > messages.value.length || 
+            (conversationMessages.length > 0 && conversationMessages[0].id !== messages.value[0]?.id)) {
+          const latestMessage = conversationMessages[0];
+          if (latestMessage.fromId !== currentUserId.value) {
+            showNewMessageAlert.value = true;
+            newMessageFrom.value = latestMessage.from;
+            if (soundEnabled.value) playMessageSound();
+            setTimeout(() => {
+              showNewMessageAlert.value = false;
+            }, 5000);
+          }
         }
-        
-        messages.value = newMessages;
+
+        messages.value = conversationMessages;
         checkForOldMessages();
       } else {
         messages.value = [];
@@ -1707,43 +1740,50 @@ function loadMessages() {
 }
 
 async function clearMessages() {
-  if (!currentUserId.value || messageOperationInProgress.value) return;
-  messageOperationInProgress.value = true;
+  if (!currentUserId.value) return;
   
   try {
-    await db.collection('users').doc(currentUserId.value).update({
+    // Use set with merge to preserve other fields
+    await db.collection('users').doc(currentUserId.value).set({
       messages: []
-    });
+    }, { merge: true });
+    
+    // Update local state
     messages.value = [];
-   } catch (error) {
+  } catch (error) {
     errorMessage.value = "Failed to clear messages: " + error.message;
-  } finally {
-    messageOperationInProgress.value = false;
   }
 }
 
 async function deleteMessage(messageId) {
-  if (!currentUserId.value || messageOperationInProgress.value) return;
-  messageOperationInProgress.value = true;
-  
+  if (!currentUserId.value) return;
+
   try {
     const userDoc = await db.collection('users').doc(currentUserId.value).get();
     if (userDoc.exists) {
       const currentMessages = userDoc.data().messages || [];
       const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
-      
-      // Use set with merge to preserve other fields
-      await db.collection('users').doc(currentUserId.value).set({
+
+      await db.collection('users').doc(currentUserId.value).update({
         messages: updatedMessages
-      }, { merge: true });
-      
-      // Update local state
+      });
+
+      // Optionally, update the recipient's messages array
+      if (selectedUser.value) {
+        const recipientDoc = await db.collection('users').doc(selectedUser.value.id).get();
+        if (recipientDoc.exists) {
+          const recipientMessages = recipientDoc.data().messages || [];
+          const updatedRecipientMessages = recipientMessages.filter(msg => msg.id !== messageId);
+          await db.collection('users').doc(selectedUser.value.id).update({
+            messages: updatedRecipientMessages
+          });
+        }
+      }
+
       messages.value = updatedMessages;
     }
-   } catch (error) {
+  } catch (error) {
     errorMessage.value = "Failed to delete message: " + error.message;
-  } finally {
-    messageOperationInProgress.value = false;
   }
 }
 
@@ -2105,12 +2145,13 @@ async function fetchNearbyUsers() {
               isSignedIn,
             showNewMessageAlert,
 newMessageFrom,
-
+  toggleChat,
     messageText,
     messages,
     signIn,
     signOut,
-    sendMessage
+    sendMessage,
+               showChat
             
         };
       }
