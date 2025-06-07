@@ -1591,10 +1591,10 @@ async function sendPanelMessage() {
           }
         }
 
-        watch(userLocation, (newLocation) => {
-          if (!newLocation) return;
-          updateMapLocation(newLocation);
-        }, { immediate: true });
+ watch(userLocation, (newLocation) => {
+  if (!newLocation) return;
+  updateMapLocation(newLocation);
+}, { immediate: true });
 
         watch(nearbyUsers, () => {
           if (!groupUsers.value.length) {
