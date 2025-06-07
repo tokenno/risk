@@ -540,6 +540,33 @@
       </div>
       <div v-if="groupAlertMessage" class="error">{{ groupAlertMessage }}</div>
     </div>
+      
+        <div v-else>
+  <!-- Nearby users display -->
+  <div v-for="user in nearbyUsers" 
+       :key="user.id" 
+       class="user-list"
+       :class="{ selected: selectedUser?.id === user.id }">
+    <input 
+      type="checkbox" 
+      :value="user.id" 
+      v-model="selectedUsersForGroup" 
+      @click.stop 
+      :disabled="user.id === currentUserId"
+    >
+    <div @click="selectUser(user)">{{ user.name }}</div>
+    <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
+    <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+    <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
+    <button 
+      v-if="user.id !== currentUserId" 
+      @click.stop="toggleFollow(user)"
+      :class="{ following: followedUserId === user.id }"
+      class="secondary"
+    >
+      {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+    </button>
+  </div>
 
     <div class="section">
       <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
@@ -578,6 +605,8 @@
         Send Location to {{ selectedUser.name }}
       </button>
           
+        
+          
         <div class="section" v-if="selectedUser">
   <h3>Messages</h3>
   <div v-if="!isSignedIn" class="message-signin-prompt">
@@ -596,11 +625,14 @@
       <button @click="clearMessages" class="warning">Clear All</button>
     </div>
   </div>
-  <div v-if="messages.length > 0" class="messages-container">
-    <div v-for="msg in messages" :key="msg.id" class="message">
-      <strong>{{ msg.from }}:</strong> {{ msg.text }}
-      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-      <button @click="deleteMessage(msg.id)" class="secondary" style="float: right; padding: 2px 5px; font-size: 0.8em;">×</button>
+<div v-if="messages.length > 0" class="messages-container">
+  <div v-for="msg in messages" :key="msg.id" class="message">
+    <div style="display: flex; justify-content: space-between; width: 100%;">
+      <div>
+        <strong>{{ msg.from }}:</strong> {{ msg.text }}
+        <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+      </div>
+      <button @click="deleteMessage(msg.id)" class="secondary" style="padding: 2px 5px; font-size: 0.8em;">×</button>
     </div>
   </div>
 </div>
@@ -609,54 +641,31 @@
       </div>
       <div v-if="loadingNearby">Loading nearby users...</div>
       <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
-      <div v-if="groupUsers.length">
-        <div v-for="user in groupUsers" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }"
-             @click="selectUser(user)">
-          <div>{{ user.name }}</div>
-          <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
-      </div>
-      <div v-else>
-        <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }">
-          <input 
-            type="checkbox" 
-            :value="user.id" 
-            v-model="selectedUsersForGroup" 
-            @click.stop 
-            :disabled="user.id === currentUserId"
-          >
-          <div @click="selectUser(user)">{{ user.name }}</div>
-          <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
-      </div>
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-    </div>
+   <div v-if="groupUsers.length">
+  <!-- Group users display -->
+  <div v-for="user in groupUsers" 
+       :key="user.id" 
+       class="user-list"
+       :class="{ selected: selectedUser?.id === user.id }"
+       @click="selectUser(user)">
+    <div>{{ user.name }}</div>
+    <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
+    <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+    <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+    <button 
+      v-if="user.id !== currentUserId" 
+      @click.stop="toggleFollow(user)"
+      :class="{ following: followedUserId === user.id }"
+      class="secondary"
+    >
+      {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+    </button>
+  </div>
+</div>
+
+</div>
+          
+          
 
  <div class="debug-panel" :class="{ open: showDebugPanel }">
   <button class="close-debug" @click="toggleDebugPanel">×</button>
@@ -683,6 +692,8 @@
   </div>
   <button @click="forceRefresh">Force Refresh</button>
 </div>
+          
+          
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -776,6 +787,7 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+          const messageOperationInProgress = ref(false);
           
           const showDebugPanel = ref(false);
             const isSignedIn = ref(false);
@@ -1590,30 +1602,26 @@ async function signOut() {
 
   
   //  sendMessage function
-  async function sendMessage() {
-    if (!selectedUser.value || !messageText.value.trim()) return;
-    
-    try {
-      await db.collection('users').doc(selectedUser.value.id).update({
-        messages: firebase.firestore.FieldValue.arrayUnion({
-          from: user.value,
-          fromId: currentUserId.value,
-          text: messageText.value,
-          timestamp: new Date().toISOString()
-        })
-      });
-      
-      messages.value.push({
-        from: 'You',
+async function sendMessage() {
+  if (!selectedUser.value || !messageText.value.trim()) return;
+  
+  try {
+    const messageId = Date.now().toString(); // Generate unique ID
+    await db.collection('users').doc(selectedUser.value.id).update({
+      messages: firebase.firestore.FieldValue.arrayUnion({
+        id: messageId, // Add ID here
+        from: user.value,
+        fromId: currentUserId.value,
         text: messageText.value,
         timestamp: new Date().toISOString()
-      });
-      
-      messageText.value = '';
-    } catch (error) {
-      errorMessage.value = "Failed to send message: " + error.message;
-    }
+      })
+    });
+    
+    messageText.value = '';
+  } catch (error) {
+    errorMessage.value = "Failed to send message: " + error.message;
   }
+}
   
   //  loadMessages function
 function loadMessages() {
@@ -1623,28 +1631,34 @@ function loadMessages() {
     if (doc.exists) {
       const data = doc.data();
       if (data.messages) {
-        const newMessages = data.messages
+        // Ensure each message has an ID
+        const processedMessages = data.messages.map(msg => ({
+          ...msg,
+          id: msg.id || Date.now().toString() // Add ID if missing
+        }));
+        
+        const newMessages = processedMessages
           .filter(msg => msg.fromId !== currentUserId.value)
           .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
           .slice(0, 20);
         
-        // Check if there are new messages
-        if (newMessages.length > messages.value.length) {
+        // Check for new messages
+        if (newMessages.length > messages.value.length || 
+            (newMessages.length > 0 && newMessages[0].id !== messages.value[0]?.id)) {
           const latestMessage = newMessages[0];
-          if (!messages.value.some(msg => msg.id === latestMessage.id)) {
-            showNewMessageAlert.value = true;
-            newMessageFrom.value = latestMessage.from;
-            if (soundEnabled.value) playMessageSound();
-            
-            // Auto-hide alert after 5 seconds
-            setTimeout(() => {
-              showNewMessageAlert.value = false;
-            }, 5000);
-          }
+          showNewMessageAlert.value = true;
+          newMessageFrom.value = latestMessage.from;
+          if (soundEnabled.value) playMessageSound();
+          
+          setTimeout(() => {
+            showNewMessageAlert.value = false;
+          }, 5000);
         }
         
         messages.value = newMessages;
         checkForOldMessages();
+      } else {
+        messages.value = [];
       }
     }
   });
@@ -1682,32 +1696,43 @@ function loadMessages() {
 }
 
 async function clearMessages() {
-  if (!currentUserId.value) return;
+  if (!currentUserId.value || messageOperationInProgress.value) return;
+  messageOperationInProgress.value = true;
   
   try {
     await db.collection('users').doc(currentUserId.value).update({
-      messages: firebase.firestore.FieldValue.delete()
+      messages: []
     });
     messages.value = [];
-  } catch (error) {
+   } catch (error) {
     errorMessage.value = "Failed to clear messages: " + error.message;
+  } finally {
+    messageOperationInProgress.value = false;
   }
 }
 
 async function deleteMessage(messageId) {
-  if (!currentUserId.value) return;
+  if (!currentUserId.value || messageOperationInProgress.value) return;
+  messageOperationInProgress.value = true;
   
   try {
     const userDoc = await db.collection('users').doc(currentUserId.value).get();
     if (userDoc.exists) {
       const currentMessages = userDoc.data().messages || [];
       const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
-      await db.collection('users').doc(currentUserId.value).update({
+      
+      // Use set with merge to preserve other fields
+      await db.collection('users').doc(currentUserId.value).set({
         messages: updatedMessages
-      });
+      }, { merge: true });
+      
+      // Update local state
+      messages.value = updatedMessages;
     }
-  } catch (error) {
+   } catch (error) {
     errorMessage.value = "Failed to delete message: " + error.message;
+  } finally {
+    messageOperationInProgress.value = false;
   }
 }
 
@@ -1880,50 +1905,63 @@ function checkForOldMessages() {
           return R * c;
         }
 
-        async function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
+async function fetchNearbyUsers() {
+  if (!userLocation.value || status.value !== 'ONLINE') {
+    errorMessage.value = 'Location not available or you are offline';
+    return;
+  }
+  
+  nearbyUsers.value = [];
+  loadingNearby.value = true;
+  
+  try {
+    const q = db.collection('users')
+      .where('status', '==', 'ONLINE')
+      .where('lastSeen', '>', new Date(Date.now() - 3600000).toISOString());
+    
+    const unsubscribe = q.onSnapshot((snapshot) => {
+      const currentUsers = snapshot.docs
+        .filter(doc => doc.id !== currentUserId.value)
+        .map(doc => {
+          const data = doc.data();
+          if (!data.latitude || !data.longitude) {
+            console.warn('User missing coordinates:', doc.id, data.name);
+            return null;
           }
-          nearbyUsers.value = [];
-          loadingNearby.value = true;
-          try {
-            const q = db.collection('users').where('status', '==', 'ONLINE');
-            q.onSnapshot((snapshot) => {
-              const currentUsers = snapshot.docs
-                .filter(doc => {
-                  const data = doc.data();
-                  return doc.id !== currentUserId.value && 
-                         isValidCoordinate(data.latitude) && 
-                         isValidCoordinate(data.longitude);
-                })
-                .map(doc => {
-                  const data = doc.data();
-                  const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                  const userName = lastKnownUsernames.value[doc.id] || data.name;
-                  return { 
-                    id: doc.id, 
-                    name: userName, 
-                    distance, 
-                    lastSeen: data.lastSeen,
-                    latitude: data.latitude,
-                    longitude: data.longitude,
-                    status: data.status
-                  };
-                })
-                .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
-              nearbyUsers.value = currentUsers;
-              loadingNearby.value = false;
-              updateNearbyMarkers();
-            }, (error) => {
-              errorMessage.value = 'Failed to load nearby users: ' + error.message;
-              loadingNearby.value = false;
-            });
-          } catch (error) {
-            errorMessage.value = 'Failed to query nearby users: ' + error.message;
-            loadingNearby.value = false;
-          }
-        }
+          
+          const distance = calculateDistance(
+            userLocation.value, 
+            [data.latitude, data.longitude]
+          );
+          
+          const userObj = {
+            id: doc.id,
+            name: data.name || 'Anonymous',
+            distance,
+            lastSeen: data.lastSeen,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            status: data.status
+          };
+          
+          console.log('Processed user:', userObj); // Debug log
+          return userObj;
+        })
+        .filter(user => user && user.distance < selectedDistance.value);
+      
+      console.log('Filtered users:', currentUsers); // Debug log
+      nearbyUsers.value = currentUsers;
+      loadingNearby.value = false;
+      updateNearbyMarkers();
+    });
+    
+    return unsubscribe;
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    errorMessage.value = 'Failed to query nearby users: ' + error.message;
+    loadingNearby.value = false;
+  }
+}
 
         async function cleanInvalidUserLocations() {
           try {
