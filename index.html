@@ -1114,6 +1114,21 @@ async function sendPanelMessage() {
             }
           });
         }
+          
+          // Helper functions for localStorage
+function getStoredUsername() {
+  return localStorage.getItem('sly_username');
+}
+
+function storeUsername(username) {
+  if (username) {
+    localStorage.setItem('sly_username', username);
+  }
+}
+
+function clearStoredUsername() {
+  localStorage.removeItem('sly_username');
+}
 
         function playAlertSound() {
           if (!audioContext || audioContext.state !== 'running') return;
@@ -1639,12 +1654,13 @@ async function sendPanelMessage() {
   // Attempt to get user location
   getUserLocation();
 
-  auth.onAuthStateChanged((userData) => {
-    if (userData) {
-      isSignedIn.value = true;
-      currentUserId.value = userData.uid;
-      user.value = userData.displayName || 'Anonymous';
-      loadMessages();
+auth.onAuthStateChanged((userData) => {
+  if (userData) {
+    isSignedIn.value = true;
+    currentUserId.value = userData.uid;
+    // Use stored username if available, otherwise use displayName or 'Anonymous'
+    user.value = getStoredUsername() || userData.displayName || 'Anonymous';
+    loadMessages();
       db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
         if (!doc.exists) {
           console.warn('User document does not exist');
@@ -1785,8 +1801,8 @@ async function signOut() {
     await auth.signOut();
     isSignedIn.value = false;
     messages.value = [];
-
-    // 💥 Reset map
+    clearStoredUsername(); // Clear the stored username
+    
     if (map) {
       map.remove();
       map = null;
@@ -1800,7 +1816,6 @@ async function signOut() {
       mapInitialized.value = false;
     }
 
-    // Reset user state that may prevent re-init
     user.value = null;
     currentUserId.value = null;
     status.value = 'OFFLINE';
@@ -2081,22 +2096,24 @@ function flashUser(userId) {
           }
         }
 
-        async function changeName() {
-          const newName = prompt('Enter new name:', user.value);
-          if (newName) {
-            user.value = newName;
-            lastKnownUsernames.value[currentUserId.value] = newName;
-            await updateUserLocation();
-            if (userMarker) {
-              userMarker.setIcon(L.divIcon({
-                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${newName.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker blinking-marker',
-                iconSize: [20, 20]
-              }));
-              userMarker.bindPopup(`<b>${newName}</b><br>Your location`);
-            }
-          }
-        }
+async function changeName() {
+  const currentName = user.value || getStoredUsername();
+  const newName = prompt('Enter new name:', currentName);
+  if (newName) {
+    user.value = newName;
+    storeUsername(newName); // Store in localStorage
+    lastKnownUsernames.value[currentUserId.value] = newName;
+    await updateUserLocation();
+    if (userMarker) {
+      userMarker.setIcon(L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${newName.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      }));
+      userMarker.bindPopup(`<b>${newName}</b><br>Your location`);
+    }
+  }
+}
 
         function calculateDistance(coord1, coord2) {
           const R = 6371e3;
@@ -2279,6 +2296,9 @@ function flashUser(userId) {
             showDebugPanel,
             toggleDebugPanel,
               isSignedIn,
+              getStoredUsername,
+  storeUsername,
+  clearStoredUsername,
     messageText,
     messages,
     signIn,
