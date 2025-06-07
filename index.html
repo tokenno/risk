@@ -628,6 +628,8 @@
         @keyup.enter="sendMessage"
       >
       <button @click="sendMessage" :disabled="!messageText">Send</button>
+        <button @click="clearOldMessages" class="warning">Clear </button>
+
     </div>
   </div>
   <div v-if="messages.length > 0" class="messages-container">
@@ -1645,36 +1647,49 @@ async function signOut() {
     }
   }
   
-  //  loadMessages function
+  //  loadMessages function and delete older
 function loadMessages() {
   if (!currentUserId.value) return;
 
   db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
     if (doc.exists) {
       const data = doc.data();
+      const now = Date.now();
+
       if (data.messages) {
-        const newIncoming = data.messages
+        const validMessages = data.messages.filter(msg => {
+          const msgTime = new Date(msg.timestamp).getTime();
+          return now - msgTime < 15 * 60 * 1000; // 15 minutes
+        });
+
+        // Detect new ones
+        const newIncoming = validMessages
           .filter(msg => msg.fromId !== currentUserId.value)
-          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
           .filter(msg => !messages.value.some(existing => existing.timestamp === msg.timestamp));
 
         if (newIncoming.length > 0) {
           const latest = newIncoming[newIncoming.length - 1];
           messageAlert.value = { from: latest.from, fromId: latest.fromId };
           showMessageAlert.value = true;
-
-          setTimeout(() => {
-            showMessageAlert.value = false;
-          }, 7000); // auto-dismiss after 7 sec
-
+          setTimeout(() => showMessageAlert.value = false, 7000);
           flashUser(latest.fromId);
         }
 
-        messages.value = [...data.messages.filter(m => m.fromId !== currentUserId.value), ...messages.value.filter(m => m.from === 'You')].slice(-20);
+        // Show only last 20 (sent + received)
+        messages.value = [
+          ...validMessages.filter(m => m.fromId !== currentUserId.value),
+          ...messages.value.filter(m => m.from === 'You')
+        ].slice(-20);
+
+        // Optional: overwrite doc to clean up expired messages
+        db.collection('users').doc(currentUserId.value).update({
+          messages: validMessages
+        }).catch(err => console.warn('Failed to clean expired messages:', err));
       }
     }
   });
 }
+
 
       function dismissMessageAlert() {
   showMessageAlert.value = false;
@@ -1701,17 +1716,19 @@ function flashUser(userId) {
 
   
   //  clearOldMessages function
-  async function clearOldMessages() {
-    if (!currentUserId.value) return;
-    
-    try {
-      await db.collection('users').doc(currentUserId.value).update({
-        messages: firebase.firestore.FieldValue.delete()
-      });
-    } catch (error) {
-      console.error('Error clearing messages:', error);
-    }
+async function clearOldMessages() {
+  if (!currentUserId.value) return;
+
+  try {
+    await db.collection('users').doc(currentUserId.value).update({
+      messages: firebase.firestore.FieldValue.delete()
+    });
+    messages.value = [];
+  } catch (error) {
+    console.error('Error clearing messages:', error);
+    errorMessage.value = 'Failed to clear messages: ' + error.message;
   }
+}
   
 
         function getUserLocation() {
