@@ -333,41 +333,6 @@
   .debug-panel {
     padding: 15px;
   }
-    .message-signin-prompt {
-  background: #444;
-  padding: 15px;
-  border-radius: 4px;
-  text-align: center;
-  margin-bottom: 10px;
-}
-
-.message-signin-prompt p {
-  margin-bottom: 10px;
-}
-
-.messages-container {
-  margin-top: 10px;
-  max-height: 200px;
-  overflow-y: auto;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 8px;
-}
-
-.message {
-  padding: 6px;
-  border-bottom: 1px solid #444;
-}
-
-.message:last-child {
-  border-bottom: none;
-}
-
-.message small {
-  color: #888;
-  font-size: 0.8em;
-  margin-left: 8px;
-}
 }
 </style>
 </head>
@@ -460,8 +425,6 @@
         </div>
         <div class="map-controls" v-if="mapInitialized">
           <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-
-            
                    <button @click="toggleDebugPanel" class="secondary">Debug</button>
       <button @click="toggleHelp" class="secondary">Help</button>
         </div>
@@ -474,21 +437,14 @@
         <span>{{ user.charAt(0).toUpperCase() }}</span>
         <div>
           <div>{{ user }}</div>
-              
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
-   
         </div>
       </div>
         <br>
       <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
-        
       <button @click="changeName">Change Name</button>
       <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-        <button v-if="isSignedIn" @click="signOut" class="secondary">Sign Out</button>
-<button v-else @click="signIn" class="secondary">Sign In to Message</button>
-        
-        
  
     </div>
 
@@ -552,31 +508,6 @@
       >
         Send Location to {{ selectedUser.name }}
       </button>
-          
-          <div class="section" v-if="selectedUser">
-  <h3>Messages</h3>
-  <div v-if="!isSignedIn" class="message-signin-prompt">
-    <p>Sign in to send messages to {{ selectedUser.name }}</p>
-    <button @click="signIn" class="secondary">Sign In</button>
-  </div>
-  <div v-else>
-    <div class="button-group">
-      <input 
-        type="text" 
-        v-model="messageText" 
-        placeholder="Type your message"
-        @keyup.enter="sendMessage"
-      >
-      <button @click="sendMessage" :disabled="!messageText">Send</button>
-    </div>
-  </div>
-  <div v-if="messages.length > 0" class="messages-container">
-    <div v-for="msg in messages" :key="msg.id" class="message">
-      <strong>{{ msg.from }}:</strong> {{ msg.text }}
-      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-    </div>
-  </div>
-</div>
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
@@ -751,9 +682,6 @@
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
           
           const showDebugPanel = ref(false);
-            const isSignedIn = ref(false);
-  const messageText = ref('');
-  const messages = ref([]);
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
@@ -1353,12 +1281,12 @@ function toggleDebugPanel() {
             return;
           }
           initAudio();
-           auth.onAuthStateChanged((userData) => {
-      if (userData) {
-        isSignedIn.value = true;
-        currentUserId.value = userData.uid;
-        user.value = userData.displayName || 'Anonymous';
-        loadMessages();
+          auth.onAuthStateChanged((userData) => {
+            if (userData) {
+              currentUserId.value = userData.uid;
+              user.value = userData.displayName || 'Anonymous';
+              nearbyUsers.value = [];
+              getUserLocation();
              
         db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
   if (!doc.exists) {
@@ -1418,99 +1346,20 @@ function toggleDebugPanel() {
   console.error('Snapshot listener error:', error);
 });
             } else {
-        isSignedIn.value = false;
-        // Allow location features without sign-in
-        if (navigator.geolocation) {
-          getUserLocation();
-        }
-      }
-    });
-  });
-        watch(status, (newStatus) => {
-    if (newStatus === 'OFFLINE') {
-      clearOldMessages();
-      // ... existing offline code ...
-    }
-  });
+              errorMessage.value = 'Please sign in';
+              signIn();
+            }
+          });
+        });
 
-   // Modify your existing signIn function
-  async function signIn() {
-    try {
-      await auth.signInAnonymously();
-      isSignedIn.value = true;
-      console.log('Signed in anonymously');
-    } catch (error) {
-      errorMessage.value = 'Sign-in failed: ' + error.message;
-    }
-  }
-  
-  // Add signOut function
-  async function signOut() {
-    try {
-      await auth.signOut();
-      isSignedIn.value = false;
-      messages.value = [];
-    } catch (error) {
-      errorMessage.value = 'Sign-out failed: ' + error.message;
-    }
-  }
-  
-  // Add sendMessage function
-  async function sendMessage() {
-    if (!selectedUser.value || !messageText.value.trim()) return;
-    
-    try {
-      await db.collection('users').doc(selectedUser.value.id).update({
-        messages: firebase.firestore.FieldValue.arrayUnion({
-          from: user.value,
-          fromId: currentUserId.value,
-          text: messageText.value,
-          timestamp: new Date().toISOString()
-        })
-      });
-      
-      messages.value.push({
-        from: 'You',
-        text: messageText.value,
-        timestamp: new Date().toISOString()
-      });
-      
-      messageText.value = '';
-    } catch (error) {
-      errorMessage.value = "Failed to send message: " + error.message;
-    }
-  }
-  
-  // Add loadMessages function
-  function loadMessages() {
-    if (!currentUserId.value) return;
-    
-    db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
-      if (doc.exists) {
-        const data = doc.data();
-        if (data.messages) {
-          messages.value = data.messages
-            .filter(msg => msg.fromId !== currentUserId.value)
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 20);
+        async function signIn() {
+          try {
+            await auth.signInAnonymously();
+            console.log('Signed in anonymously');
+          } catch (error) {
+            errorMessage.value = 'Anonymous sign-in failed: ' + error.message;
+          }
         }
-      }
-    });
-  }
-  
-  // Add clearOldMessages function
-  async function clearOldMessages() {
-    if (!currentUserId.value) return;
-    
-    try {
-      await db.collection('users').doc(currentUserId.value).update({
-        messages: firebase.firestore.FieldValue.delete()
-      });
-    } catch (error) {
-      console.error('Error clearing messages:', error);
-    }
-  }
-  
 
         function getUserLocation() {
           if (!navigator.geolocation) {
@@ -1838,13 +1687,7 @@ function toggleDebugPanel() {
           toggleHelp,
           selectedUsersForGroup,
             showDebugPanel,
-            toggleDebugPanel,
-              isSignedIn,
-    messageText,
-    messages,
-    signIn,
-    signOut,
-    sendMessage
+            toggleDebugPanel
         };
       }
     }).mount('#app');
