@@ -53,8 +53,18 @@
     margin-right: 8px;
     margin-bottom: 8px;
   }
+    button:active {
+  background: #dc3545 !important;
+  transform: scale(0.98);
+}
+    /* This will make distance buttons stay red when active/pressed */
+.button-group button.active {
+  background: #dc3545 !important;
+  box-shadow: 0 0 0 2px #dc3545;
+}
+
   button:hover {
-    background: #218838;
+    background: #a82333;
   }
   button.warning {
     background: #dc3545;
@@ -66,7 +76,7 @@
     background: #6c757d;
   }
   button.secondary:hover {
-    background: #5a6268;
+    background: #2a6268;
   }
   .error {
     color: #ff4d4d;
@@ -150,7 +160,7 @@
     margin-top: 8px;
   }
   button.active {
-    background: #218838;
+    background: #28a745;
     box-shadow: 0 0 0 2px #28a745;
   }
   .poke-cooldown {
