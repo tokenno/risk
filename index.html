@@ -524,6 +524,8 @@
     </div>
 
     <div class="section" v-if="groupUsers.length > 0">
+          <p>Group of {{ groupUsers.length }} users</p>
+          <button @click="clearGroup" class="secondary">View All Users</button>
       <h3>Group Alerts</h3>
       <div class="button-group">
         <button @click="enableGroupAlerts = !enableGroupAlerts" :class="{ active: enableGroupAlerts }">
@@ -1368,6 +1370,11 @@ function focusOnMyLocation() {
             u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000
           );
           groupUsers.value = onlineUsers.filter(user => selectedUsersForGroup.value.includes(user.id));
+            // Store group for session
+  sessionStorage.setItem('slyLastGroup', JSON.stringify({
+    userIds: selectedUsersForGroup.value,
+    timestamp: Date.now()
+  }));
           selectedUsersForGroup.value = [];
           updateNearbyMarkers();
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
@@ -1375,14 +1382,33 @@ function focusOnMyLocation() {
           }
         }
 
-        function clearGroup() {
-          groupUsers.value = [];
-          selectedUsersForGroup.value = [];
-          updateNearbyMarkers();
-          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
-            updateUserBeeps();
-          }
-        }
+    function clearGroup() {
+  groupUsers.value = [];
+  selectedUsersForGroup.value = [];
+  enableGroupAlerts.value = false;
+  groupAlertMessage.value = '';
+  
+  // Reset map to show all users
+  updateNearbyMarkers();
+  
+  // Reset audio if enabled
+  if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+    updateUserBeeps();
+  }
+  
+  // Reset followed user if they're not in the general nearby users
+  if (followedUserId.value && 
+      !nearbyUsers.value.some(u => u.id === followedUserId.value)) {
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+  }
+  
+  // Focus back on user's location
+  if (map && userLocation.value) {
+    map.setView(userLocation.value, getZoomLevelForDistance(selectedDistance.value));
+  }
+}
 
         watch(userLocation, (newLocation) => {
           if (!newLocation) return;
@@ -1634,10 +1660,19 @@ async function signOut() {
   
   //  sendMessage function
 async function sendMessage() {
-  if (!selectedUser.value || !messageText.value.trim()) return;
+  if (!selectedUser.value || !messageText.value.trim() || !currentUserId.value) return;
 
   try {
-    const messageId = Date.now().toString(); // Generate unique ID
+    // Check if recipient exists first
+    const recipientDoc = await db.collection('users').doc(selectedUser.value.id).get();
+    if (!recipientDoc.exists) {
+      errorMessage.value = "Recipient is no longer available";
+      // Clear the selected user since they're gone
+      selectedUser.value = null;
+      return;
+    }
+
+    const messageId = Date.now().toString();
     const messageData = {
       id: messageId,
       from: user.value,
@@ -1647,21 +1682,37 @@ async function sendMessage() {
       timestamp: new Date().toISOString()
     };
 
-    // Add message to recipient's messages array
-    await db.collection('users').doc(selectedUser.value.id).update({
+    // Batch write to both users
+    const batch = db.batch();
+    
+    // Add to recipient's messages
+    const recipientRef = db.collection('users').doc(selectedUser.value.id);
+    batch.set(recipientRef, {
       messages: firebase.firestore.FieldValue.arrayUnion(messageData)
-    });
-
-    // Add message to sender's messages array
-    await db.collection('users').doc(currentUserId.value).update({
+    }, { merge: true });
+    
+    // Add to sender's messages
+    const senderRef = db.collection('users').doc(currentUserId.value);
+    batch.set(senderRef, {
       messages: firebase.firestore.FieldValue.arrayUnion(messageData)
-    });
+    }, { merge: true });
 
-    // Optionally, add the sent message to the local messages array immediately
-    messages.value.unshift(messageData); // Add to the start of the array
-    messageText.value = ''; // Clear input
+    await batch.commit();
+    
+    // Update local state
+    messages.value.unshift(messageData);
+    messageText.value = '';
+    errorMessage.value = '';
+
   } catch (error) {
-    errorMessage.value = "Failed to send message: " + error.message;
+    console.error("Message send error:", error);
+    
+    if (error.code === 'not-found') {
+      errorMessage.value = "Recipient is no longer available";
+      selectedUser.value = null;
+    } else {
+      errorMessage.value = "Failed to send message: " + error.message;
+    }
   }
 }
   //  loadMessages function
