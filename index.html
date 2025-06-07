@@ -1586,16 +1586,16 @@ function getUserLocation() {
     { timeout: timeoutDuration, enableHighAccuracy: true }
   );
 }
-   //  signIn function
-  async function signIn() {
-    try {
-      await auth.signInAnonymously();
-      isSignedIn.value = true;
-      console.log('Signed in anonymously');
-    } catch (error) {
-      errorMessage.value = 'Sign-in failed: ' + error.message;
-    }
+async function signIn() {
+  try {
+    await auth.signInAnonymously();
+    isSignedIn.value = true;
+    console.log('Signed in anonymously');
+    getUserLocation(); // Reinitialize map after sign-in
+  } catch (error) {
+    errorMessage.value = 'Sign-in failed: ' + error.message;
   }
+}
   
   // signOut function
 async function signOut() {
