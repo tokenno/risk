@@ -607,6 +607,7 @@
         Send Location to {{ selectedUser.name }}
       </button>
           
+
         
 <div class="section" v-if="selectedUser">
   <h3>
@@ -1381,7 +1382,15 @@ function focusOnMyLocation() {
             updateUserBeeps();
           }
         }
-
+function checkForInvalidConversations() {
+  messages.value = messages.value.filter(msg => {
+    // Keep messages where either:
+    // 1. We're the sender and the recipient might still exist
+    // 2. We're the receiver and the sender might still exist
+    return (msg.fromId === currentUserId.value) || 
+           (msg.toId === currentUserId.value);
+  });
+}
     function clearGroup() {
   groupUsers.value = [];
   selectedUsersForGroup.value = [];
