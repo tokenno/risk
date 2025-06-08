@@ -649,15 +649,8 @@ button.online-status {
  
   </div>
 </div>
+<div class="section">
 
-    <div class="section">
-      <h3>Your Location</h3>
-      <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
-      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
-      <div v-else>
-        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
-        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
-        <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
         <div id="map">
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
@@ -668,7 +661,7 @@ button.online-status {
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-    </div>
+  
 
     <div class="section">
       <div v-if="user" class="user-info">
@@ -678,6 +671,9 @@ button.online-status {
               
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
+               <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
+      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
+
    
         </div>
       </div>
@@ -846,6 +842,14 @@ button.online-status {
  <div class="debug-panel" :class="{ open: showDebugPanel }">
   <button class="close-debug" @click="toggleDebugPanel">×</button>
   <h3>Debug Information</h3>
+     <div class="section">
+      <h3>Your Location</h3>
+      <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
+      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
+      <div v-else>
+        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
+        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
+        <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
   <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
   <div>User ID: {{ currentUserId || 'Not set' }}</div>
   <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
