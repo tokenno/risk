@@ -832,6 +832,7 @@ button.online-status {
           <div @click="selectUser(user)">{{ user.name }}</div>
           <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
           <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
+            <div @click="selectUser(user)" v-if="user.distance === null">Global user</div>
           <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
           <button 
             v-if="user.id !== currentUserId" 
@@ -975,12 +976,14 @@ button.online-status {
         const activeSoundProfiles = ref([]);
         const showAudioPermission = ref(true);
         const audioState = ref('Not initialized');
-        const distanceOptions = ref([
-          { label: '100m', value: 100 },
-          { label: '1km', value: 1000 },
-          { label: '50km', value: 50000 },
-          { label: '150km', value: 150000 },
-          { label: '500km', value: 500000 }
+      const distanceOptions = ref([
+  { label: '100m', value: 100, zoom: 18 },
+  { label: '1km', value: 1000, zoom: 15 },
+  { label: '50km', value: 50000, zoom: 11 },
+  { label: '150km', value: 150000, zoom: 9 },
+  { label: '500km', value: 500000, zoom: 7 },
+  { label: 'Global', value: Infinity, zoom: 3 }
+        
         ]);
         const selectedDistance = ref(1000);
         const locationStatus = ref('loading');
@@ -1505,56 +1508,67 @@ function clearStoredUsername() {
           }
         }, 3000);
 
-       function initMap(location) {
-  try {
-    nextTick(() => {
-      if (!document.getElementById('map')) {
-        console.error('Map container not found');
-        errorMessage.value = 'Map container not found in DOM';
-        return;
-      }
-      if (typeof L === 'undefined') {
-        console.error('Leaflet not loaded');
-        errorMessage.value = 'Leaflet library not loaded';
-        return;
-      }
-      if (map) {
-        console.warn('Map already initialized, updating location');
-        map.setView(location, 18);
-        map.invalidateSize();
-        return;
-      }
+function initMap(location, retries = 3, delay = 1000) {
+  waitForLeaflet(() => {
+    try {
+      nextTick(() => {
+        if (!document.getElementById('map')) {
+          if (retries > 0) {
+            console.warn(`Map container not found, retrying ${retries} more times`);
+            setTimeout(() => initMap(location, retries - 1, delay), delay);
+            return;
+          }
+          console.error('Map container not found after retries');
+          errorMessage.value = 'Map container not found in DOM';
+          return;
+        }
+        if (map) {
+          console.warn('Map already initialized, updating location');
+          const option = distanceOptions.value.find(opt => opt.value === selectedDistance.value);
+          const zoomLevel = option ? option.zoom : 18;
+          map.setView(location, zoomLevel);
+          map.invalidateSize();
+          return;
+        }
 
-      const initialLocation = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1]))
-        ? location
-        : [51.505, -0.09]; // Fallback to London
-      const initialZoom = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) ? 18 : 13;
+        const initialLocation = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1]))
+          ? location
+          : [51.505, -0.09];
+        
+        const option = distanceOptions.value.find(opt => opt.value === selectedDistance.value);
+        const initialZoom = option ? option.zoom : 13;
 
-      map = L.map('map').setView(initialLocation, initialZoom);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19
-      }).addTo(map);
+        map = L.map('map').setView(initialLocation, initialZoom);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19
+        }).addTo(map);
 
-      if (user.value && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) {
-        userMarker = L.marker(location, {
-          icon: L.divIcon({
-            html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-            className: 'user-marker blinking-marker',
-            iconSize: [20, 20]
-          })
-        }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+        if (user.value && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) {
+          userMarker = L.marker(location, {
+            icon: L.divIcon({
+              html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+              className: 'user-marker blinking-marker',
+              iconSize: [20, 20]
+            })
+          }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+        }
+
+        mapInitialized.value = true;
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 100);
+      });
+    } catch (error) {
+      console.error('Map initialization failed:', error);
+      if (retries > 0) {
+        console.warn(`Retrying map initialization, ${retries} attempts left`);
+        setTimeout(() => initMap(location, retries - 1, delay), delay);
+      } else {
+        errorMessage.value = 'Map initialization failed after retries: ' + error.message;
       }
-
-      mapInitialized.value = true;
-      setTimeout(() => {
-        if (map) map.invalidateSize();
-      }, 100);
-    });
-  } catch (error) {
-    console.error('Map initialization failed:', error);
-    errorMessage.value = 'Map initialization failed: ' + error.message;
-  }
+    }
+  });
 }
         function selectUser(user) {
           selectedUser.value = user;
@@ -1611,64 +1625,70 @@ function clearStoredUsername() {
           updateNearbyMarkers();
         }
 
-        function focusOnMyLocation() {
-          if (map && userLocation.value) {
-            map.setView(userLocation.value, 18);
-            selectedUser.value = null;
-            followedUserId.value = null;
-            followedUserName.value = '';
-            followedUserLocation.value = null;
-            if (selectedUserMarker) {
-              map.removeLayer(selectedUserMarker);
-              selectedUserMarker = null;
-            }
-            if (userMarker) {
-              userMarker.setIcon(L.divIcon({
-                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker blinking-marker',
-                iconSize: [20, 20]
-              }));
-              userMarker.addTo(map).bringToFront();
-            }
-          }
-          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
-            updateUserBeeps();
-          }
-          updateNearbyMarkers();
-        }
+function focusOnMyLocation() {
+  if (map && userLocation.value) {
+    const option = distanceOptions.value.find(opt => opt.value === selectedDistance.value);
+    const zoomLevel = option ? option.zoom : 18;
+    map.setView(userLocation.value, zoomLevel);
+    selectedUser.value = null;
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+    if (selectedUserMarker) {
+      map.removeLayer(selectedUserMarker);
+      selectedUserMarker = null;
+    }
+    if (userMarker) {
+      userMarker.setIcon(L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      }));
+      userMarker.addTo(map).bringToFront();
+    }
+  }
+  if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+    updateUserBeeps();
+  }
+  updateNearbyMarkers();
+}
 
         function updateNearbyMarkers() {
-          if (!map) return;
-          nearbyMarkers.forEach(marker => map.removeLayer(marker));
-          nearbyMarkers = [];
-          const usersToDisplay = groupUsers.value.length 
-            ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
-            : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
-          nearbyMarkers = usersToDisplay.map((user, index) => {
-            const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
-            return L.marker([user.latitude, user.longitude], {
-              icon: L.divIcon({
-                html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker',
-                iconSize: [20, 20]
-              })
-            }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-          });
-          if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
-            followedUserId.value = null;
-            followedUserName.value = '';
-            followedUserLocation.value = null;
-            if (map && userLocation.value) {
-              map.setView(userLocation.value, 18);
-            }
-            if (selectedUserMarker) {
-              map.removeLayer(selectedUserMarker);
-              selectedUserMarker = null;
-            }
-            selectedUser.value = null;
-          }
-        }
+  if (!map) return;
+  nearbyMarkers.forEach(marker => map.removeLayer(marker));
+  nearbyMarkers = [];
+  const usersToDisplay = groupUsers.value.length 
+    ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
+    : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
+  
+  nearbyMarkers = usersToDisplay.map((user, index) => {
+    const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
+    const distanceText = user.distance === null ? 'Global user' : 
+                         (user.distance < 1000 ? `${user.distance}m` : `${(user.distance/1000).toFixed(1)}km`);
+    
+    return L.marker([user.latitude, user.longitude], {
+      icon: L.divIcon({
+        html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker',
+        iconSize: [20, 20]
+      })
+    }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${distanceText} away`);
+  });
 
+  if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+    if (map && userLocation.value) {
+      map.setView(userLocation.value, 18);
+    }
+    if (selectedUserMarker) {
+      map.removeLayer(selectedUserMarker);
+      selectedUserMarker = null;
+    }
+    selectedUser.value = null;
+  }
+}
         async function pokeUser() {
           if (!selectedUser.value || isPokeCooldown.value) return;
           try {
@@ -2042,7 +2062,7 @@ function flashUser(userId) {
   }
   
 
-      function getUserLocation() {
+function getUserLocation() {
   if (!navigator.geolocation) {
     errorMessage.value = 'Geolocation is not supported by your browser';
     locationStatus.value = 'unavailable';
@@ -2074,7 +2094,9 @@ function flashUser(userId) {
       if (!map) {
         initMap(userLocation.value);
       } else {
-        map.setView(userLocation.value, 18);
+        const option = distanceOptions.value.find(opt => opt.value === selectedDistance.value);
+        const zoomLevel = option ? option.zoom : 18;
+        map.setView(userLocation.value, zoomLevel);
       }
       
       // Add/update user marker
@@ -2193,12 +2215,19 @@ function flashUser(userId) {
           }
         }
 
-        function selectDistance(distance) {
-          selectedDistance.value = distance;
-          if (status.value === 'ONLINE') {
-            fetchNearbyUsers();
-          }
-        }
+     function selectDistance(distance) {
+  selectedDistance.value = distance;
+  if (status.value === 'ONLINE') {
+    fetchNearbyUsers();
+  }
+  // Update map zoom if we have a location
+  if (map && userLocation.value) {
+    const option = distanceOptions.value.find(opt => opt.value === distance);
+    if (option) {
+      map.setView(userLocation.value, option.zoom);
+    }
+  }
+}
 
 async function changeName() {
   const currentName = user.value || getStoredUsername();
@@ -2232,50 +2261,58 @@ async function changeName() {
           return R * c;
         }
 
-        async function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
-          }
-          nearbyUsers.value = [];
-          loadingNearby.value = true;
-          try {
-            const q = db.collection('users').where('status', '==', 'ONLINE');
-            q.onSnapshot((snapshot) => {
-              const currentUsers = snapshot.docs
-                .filter(doc => {
-                  const data = doc.data();
-                  return doc.id !== currentUserId.value && 
-                         isValidCoordinate(data.latitude) && 
-                         isValidCoordinate(data.longitude);
-                })
-                .map(doc => {
-                  const data = doc.data();
-                  const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                  const userName = lastKnownUsernames.value[doc.id] || data.name;
-                  return { 
-                    id: doc.id, 
-                    name: userName, 
-                    distance, 
-                    lastSeen: data.lastSeen,
-                    latitude: data.latitude,
-                    longitude: data.longitude,
-                    status: data.status
-                  };
-                })
-                .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
-            nearbyUsers.value = currentUsers.filter(user => user && user.id && user.name);
-              loadingNearby.value = false;
-              updateNearbyMarkers();
-            }, (error) => {
-              errorMessage.value = 'Failed to load nearby users: ' + error.message;
-              loadingNearby.value = false;
-            });
-          } catch (error) {
-            errorMessage.value = 'Failed to query nearby users: ' + error.message;
-            loadingNearby.value = false;
-          }
-        }
+ async function fetchNearbyUsers() {
+  if (!userLocation.value && selectedDistance.value !== Infinity) {
+    errorMessage.value = 'Location not available';
+    return;
+  }
+  nearbyUsers.value = [];
+  loadingNearby.value = true;
+  try {
+    const q = db.collection('users').where('status', '==', 'ONLINE');
+    q.onSnapshot((snapshot) => {
+      const currentUsers = snapshot.docs
+        .filter(doc => {
+          const data = doc.data();
+          return doc.id !== currentUserId.value && 
+                 isValidCoordinate(data.latitude) && 
+                 isValidCoordinate(data.longitude);
+        })
+        .map(doc => {
+          const data = doc.data();
+          const distance = selectedDistance.value === Infinity ? 
+            null : 
+            calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+          const userName = lastKnownUsernames.value[doc.id] || data.name;
+          return { 
+            id: doc.id, 
+            name: userName, 
+            distance, 
+            lastSeen: data.lastSeen,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            status: data.status
+          };
+        })
+        .filter(user => 
+          (selectedDistance.value === Infinity || 
+           (user.distance < selectedDistance.value)) && 
+          user.status === 'ONLINE' && 
+          (Date.now() - Date.parse(user.lastSeen)) < 3600000
+        );
+      
+      nearbyUsers.value = currentUsers.filter(user => user && user.id && user.name);
+      loadingNearby.value = false;
+      updateNearbyMarkers();
+    }, (error) => {
+      errorMessage.value = 'Failed to load nearby users: ' + error.message;
+      loadingNearby.value = false;
+    });
+  } catch (error) {
+    errorMessage.value = 'Failed to query nearby users: ' + error.message;
+    loadingNearby.value = false;
+  }
+}
 
         async function cleanInvalidUserLocations() {
           try {
