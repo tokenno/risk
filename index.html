@@ -686,11 +686,12 @@ button.online-status {
         </div>
       </div>
         <br>
+         <div class="message-notification">
       <button @click="toggleStatus" :class="{ 'online-status': status === 'ONLINE' }">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
         
       <button @click="changeName">Change Name</button>
          <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-      <div class="message-notification">
+     
         <button @click="toggleMessagePanel" class="message-boxes">
           Messages
           <span v-if="unreadMessageCount > 0" class="message-notification-badge">{{ unreadMessageCount }}</span>
