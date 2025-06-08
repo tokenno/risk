@@ -482,6 +482,28 @@
     left: 20px;
   }
 }
+
+/* New styles for message alert sound */
+.message-alert-sound {
+  display: none;
+}
+
+/* New style for online status button */
+button.online-status {
+  animation: onlinePulse 4s infinite;
+}
+
+@keyframes onlinePulse {
+  0% { background-color: #28a745; }
+  50% { background-color: #dc3545; }
+  100% { background-color: #28a745; }
+}
+
+/* Message boxes style */
+.message-boxes {
+  background-color: #2c2c2c;
+  color: white;
+}
 </style>
 </head>
 <body>
@@ -600,12 +622,12 @@
         </div>
       </div>
         <br>
-      <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
+      <button @click="toggleStatus" :class="{ 'online-status': status === 'ONLINE' }">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
         
       <button @click="changeName">Change Name</button>
          <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
       <div class="message-notification">
-        <button @click="toggleMessagePanel">
+        <button @click="toggleMessagePanel" class="message-boxes">
           Messages
           <span v-if="unreadMessageCount > 0" class="message-notification-badge">{{ unreadMessageCount }}</span>
               
@@ -828,6 +850,9 @@
     <button @click="sendPanelMessage" :disabled="!panelMessageText">Send</button>
   </div>
 </div>
+
+  <!-- Message alert sound (hidden) -->
+  <audio class="message-alert-sound" src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" preload="auto"></audio>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -1342,6 +1367,19 @@ function clearStoredUsername() {
           } catch (error) {
             console.error('playNewUserSound error:', error);
             errorMessage.value = 'Failed to play new user sound: ' + error.message;
+          }
+        }
+
+        function playMessageSound() {
+          if (!soundEnabled.value) return;
+          try {
+            const audio = document.querySelector('.message-alert-sound');
+            if (audio) {
+              audio.currentTime = 0;
+              audio.play().catch(e => console.log('Audio play prevented:', e));
+            }
+          } catch (error) {
+            console.error('Message sound error:', error);
           }
         }
 
@@ -1892,6 +1930,7 @@ function loadMessages() {
           }, 7000); // auto-dismiss after 7 sec
 
           flashUser(latest.fromId);
+          playMessageSound();
         }
 
         messages.value = [...data.messages.filter(m => m.fromId !== currentUserId.value), ...messages.value.filter(m => m.from === 'You')].slice(-20);
