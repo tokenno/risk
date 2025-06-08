@@ -391,6 +391,8 @@ button.online-status {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px;
+      display: flex;
+  flex-direction: column-reverse; /* This makes new messages appear at the top */
 }
 
 .message {
@@ -1066,7 +1068,8 @@ async function sendPanelMessage() {
 
     try {
       await Promise.all(promises);
-      messages.value.push({
+      // Prepend the message to the beginning of the array
+      messages.value.unshift({
         from: 'You',
         text: panelMessageText.value,
         timestamp: new Date().toISOString()
@@ -1087,7 +1090,8 @@ async function sendPanelMessage() {
         })
       });
       
-      messages.value.push({
+      // Prepend the message to the beginning of the array
+      messages.value.unshift({
         from: 'You',
         text: panelMessageText.value,
         timestamp: new Date().toISOString()
@@ -1957,30 +1961,31 @@ async function signOut() {
 }
   
   //  sendMessage function
-  async function sendMessage() {
-    if (!selectedUser.value || !messageText.value.trim()) return;
-    
-    try {
-      await db.collection('users').doc(selectedUser.value.id).update({
-        messages: firebase.firestore.FieldValue.arrayUnion({
-          from: user.value,
-          fromId: currentUserId.value,
-          text: messageText.value,
-          timestamp: new Date().toISOString()
-        })
-      });
-      
-      messages.value.push({
-        from: 'You',
+async function sendMessage() {
+  if (!selectedUser.value || !messageText.value.trim()) return;
+  
+  try {
+    await db.collection('users').doc(selectedUser.value.id).update({
+      messages: firebase.firestore.FieldValue.arrayUnion({
+        from: user.value,
+        fromId: currentUserId.value,
         text: messageText.value,
         timestamp: new Date().toISOString()
-      });
-      
-      messageText.value = '';
-    } catch (error) {
-      errorMessage.value = "Failed to send message: " + error.message;
-    }
+      })
+    });
+    
+    // Prepend the message to the beginning of the array
+    messages.value.unshift({
+      from: 'You',
+      text: messageText.value,
+      timestamp: new Date().toISOString()
+    });
+    
+    messageText.value = '';
+  } catch (error) {
+    errorMessage.value = "Failed to send message: " + error.message;
   }
+}
   
   //  loadMessages function
 function loadMessages() {
@@ -1990,13 +1995,18 @@ function loadMessages() {
     if (doc.exists) {
       const data = doc.data();
       if (data.messages) {
-        const newIncoming = data.messages
+        // Sort messages in descending order (newest first)
+        const sortedMessages = [...data.messages].sort((a, b) => 
+          new Date(b.timestamp) - new Date(a.timestamp)
+        );
+
+        const newIncoming = sortedMessages
           .filter(msg => msg.fromId !== currentUserId.value)
-          .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
-          .filter(msg => !messages.value.some(existing => existing.timestamp === msg.timestamp));
+          .filter(msg => !messages.value.some(existing => 
+            existing.timestamp === msg.timestamp));
 
         if (newIncoming.length > 0) {
-          const latest = newIncoming[newIncoming.length - 1];
+          const latest = newIncoming[0]; // Get the first item (newest)
           messageAlert.value = { from: latest.from, fromId: latest.fromId };
           showMessageAlert.value = true;
 
@@ -2006,13 +2016,17 @@ function loadMessages() {
 
           setTimeout(() => {
             showMessageAlert.value = false;
-          }, 7000); // auto-dismiss after 7 sec
+          }, 7000);
 
           flashUser(latest.fromId);
           playMessageSound();
         }
 
-        messages.value = [...data.messages.filter(m => m.fromId !== currentUserId.value), ...messages.value.filter(m => m.from === 'You')].slice(-20);
+        // Keep messages in reverse order (newest first)
+        messages.value = [
+          ...sortedMessages.filter(m => m.fromId !== currentUserId.value),
+          ...messages.value.filter(m => m.from === 'You')
+        ].slice(0, 20); // Keep only the 20 most recent messages
       }
     }
   });
