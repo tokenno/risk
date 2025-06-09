@@ -1,7 +1,7 @@
 const CACHE_NAME = 'sly-app-v1';
 const urlsToCache = [
   '/',
-  'index.html',
+  '/index.html',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/vue@3/dist/vue.global.prod.js',

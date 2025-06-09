@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sly App</title>
-    <link rel="preload" href="manifest.json" as="fetch" crossorigin="anonymous">
-<link rel="preload" href="icons/icon-192x192.png" as="image">
-<link rel="preload" href="icons/icon-512x512.png" as="image">
-<link rel="preload" href="incmess.mp3" as="audio">
-    <link rel="manifest" href="`manifest.json">
+    <link rel="preload" href="/manifest.json" as="fetch" crossorigin="anonymous">
+<link rel="preload" href="/icons/icon-192x192.png" as="image">
+<link rel="preload" href="/icons/icon-512x512.png" as="image">
+<link rel="preload" href="/incmess.mp3" as="audio">
+    <link rel="manifest" href="`/manifest.json">
       <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -2578,7 +2578,7 @@ async function changeName() {
   </script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js')
+    navigator.serviceWorker.register('/sw.js')
       .then(registration => {
         console.log('Service Worker registered:', registration);
       })
