@@ -139,6 +139,44 @@ button.online-status {
   align-items: center;
   gap: 8px;
 }
+    /* Add this to your existing CSS */
+.user-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.user-list-item:hover {
+  background: #2a2a2a;
+}
+
+.user-list-item.selected {
+  background: #2a2a2a;
+  border-left: 4px solid var(--accent-color);
+}
+
+.user-list-item > div:first-child {
+  flex: 1;
+  min-width: 100px;
+}
+
+.user-list-item > div:not(:first-child) {
+  min-width: 80px;
+  text-align: right;
+}
+
+.user-list-item button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.user-checkbox {
+  margin-right: 8px;
+}
 
 .user-list div:hover {
   background: #2a2a2a;
@@ -649,8 +687,15 @@ button.online-status {
  
   </div>
 </div>
-<div class="section">
 
+    <div class="section">
+      <h3>Your Location</h3>
+      <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
+      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
+      <div v-else>
+        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
+        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
+        <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
         <div id="map">
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
@@ -661,7 +706,7 @@ button.online-status {
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-  
+    </div>
 
     <div class="section">
       <div v-if="user" class="user-info">
@@ -671,9 +716,6 @@ button.online-status {
               
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
-               <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
-      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
-
    
         </div>
       </div>
@@ -720,33 +762,64 @@ button.online-status {
     </div>
 
     <div class="section">
-      <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
-      <div v-if="!groupUsers.length" class="button-group">
-        <button class="secondary" @click="createGroupFromSelected" :disabled="selectedUsersForGroup.length === 0">
-          Create Group with Selected Users
-        </button>
-          <div 
-  :key="user.id" 
-  class="user-list"
-  :class="{ selected: selectedUser?.id === user.id }"
-  :data-user-id="user.id"
->
-          </div>
-      </div>
-      <div v-else class="button-group">
-        <p>Group of {{ groupUsers.length }} users</p>
-        <button class="secondary" @click="clearGroup">Clear Group</button>
-      </div>
-      <div class="button-group">
-        <button 
-          v-for="distance in distanceOptions" 
-          :key="distance.value"
-          :class="{ active: selectedDistance === distance.value }"
-          @click="selectDistance(distance.value)"
-        >
-          {{ distance.label }}
-        </button>
-      </div>
+     <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
+     :key="user.id" 
+     class="user-list-item"
+     :class="{ selected: selectedUser?.id === user.id }"
+     :data-user-id="user.id"
+     @click="selectUser(user)">
+  
+  <input 
+    v-if="!groupUsers.length"
+    type="checkbox" 
+    :value="user.id" 
+    v-model="selectedUsersForGroup" 
+    @click.stop 
+    :disabled="user.id === currentUserId"
+    class="user-checkbox"
+  >
+  
+  <div>{{ user.name }}</div>
+  
+  <div v-if="user.distance === null">Global</div>
+  <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+  <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+  
+  <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+  
+  <button 
+    v-if="user.id !== currentUserId" 
+    @click.stop="toggleFollow(user)"
+    :class="{ following: followedUserId === user.id }"
+    class="secondary"
+  >
+    {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+  </button>
+</div>
+<div v-for="user in groupUsers" 
+     :key="user.id" 
+     class="user-list-item"
+     :class="{ selected: selectedUser?.id === user.id }"
+     :data-user-id="user.id"
+     @click="selectUser(user)">
+  
+  <div>{{ user.name }}</div>
+  
+  <div v-if="user.distance === null">Global</div>
+  <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+  <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+  
+  <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+  
+  <button 
+    v-if="user.id !== currentUserId" 
+    @click.stop="toggleFollow(user)"
+    :class="{ following: followedUserId === user.id }"
+    class="secondary"
+  >
+    {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+  </button>
+</div>
    <button v-if="selectedUser && selectedUser.id" @click="pokeUser" class="secondary" :disabled="isPokeCooldown">
   Poke {{ selectedUser.name }}
 </button>
@@ -764,6 +837,7 @@ button.online-status {
     <p>Sign in to send messages to {{ selectedUser.name }}</p>
     <button @click="signIn" class="secondary">Sign In</button>
   </div>
+              
   <div v-else>
     <div class="button-group">
       <input 
@@ -775,6 +849,7 @@ button.online-status {
       <button @click="sendMessage" :disabled="!messageText">Send</button>
     </div>
   </div>
+              
   <div v-if="messages.length > 0" class="messages-container">
   <div v-for="msg in messages" :key="msg.id" 
      class="message" 
@@ -842,14 +917,6 @@ button.online-status {
  <div class="debug-panel" :class="{ open: showDebugPanel }">
   <button class="close-debug" @click="toggleDebugPanel">×</button>
   <h3>Debug Information</h3>
-     <div class="section">
-      <h3>Your Location</h3>
-      <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
-      <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
-      <div v-else>
-        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
-        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
-        <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
   <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
   <div>User ID: {{ currentUserId || 'Not set' }}</div>
   <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
