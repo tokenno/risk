@@ -225,6 +225,23 @@ button.online-status {
   gap: 8px;
   flex-wrap: wrap;
 }
+    
+    .distance-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.distance-controls button {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.distance-controls button.active {
+  background: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
 
 /* Audio Permission */
 .audio-permission {
@@ -699,11 +716,24 @@ button.online-status {
         <div id="map">
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
-        <div class="map-controls" v-if="mapInitialized">
-          <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-         <button @click="toggleDebugPanel" class="secondary">Debug</button>
-      <button @click="toggleHelp" class="secondary">Help</button>
-        </div>
+       
+          
+     <div class="map-controls" v-if="mapInitialized">
+  <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+  <button @click="toggleDebugPanel" class="secondary">Debug</button>
+  <button @click="toggleHelp" class="secondary">Help</button>
+</div>
+
+<div class="distance-controls" v-if="mapInitialized && status === 'ONLINE'">
+  <button 
+    v-for="option in distanceOptions" 
+    :key="option.value"
+    @click="selectDistance(option.value)"
+    :class="{ active: selectedDistance === option.value }"
+  >
+    {{ option.label }}
+  </button>
+</div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </div>
@@ -2538,6 +2568,40 @@ async function changeName() {
         };
       }
     }).mount('#app');
+      
+        document.addEventListener('DOMContentLoaded', function() {
+    const { createApp, ref, onMounted, watch, nextTick } = Vue;
+    
+    // Rest of your existing script...
+    
+    // Modify the initMap function to remove the waitForLeaflet wrapper
+    function initMap(location, retries = 3, delay = 1000) {
+      try {
+        if (!document.getElementById('map')) {
+          if (retries > 0) {
+            console.warn(`Map container not found, retrying ${retries} more times`);
+            setTimeout(() => initMap(location, retries - 1, delay), delay);
+            return;
+          }
+          console.error('Map container not found after retries');
+          errorMessage.value = 'Map container not found in DOM';
+          return;
+        }
+        
+        // Rest of your existing initMap code...
+      } catch (error) {
+        console.error('Map initialization failed:', error);
+        if (retries > 0) {
+          console.warn(`Retrying map initialization, ${retries} attempts left`);
+          setTimeout(() => initMap(location, retries - 1, delay), delay);
+        } else {
+          errorMessage.value = 'Map initialization failed after retries: ' + error.message;
+        }
+      }
+    }
+    
+    // Rest of your existing script...
+  });
   </script>
 </body>
 </html>
