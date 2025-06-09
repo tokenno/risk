@@ -1,26 +1,25 @@
 {
-  "name": "Sly App",
-  "short_name": "Sly",
-  "description": "A location-based social networking app to connect with nearby users.",
-  "start_url": "index.html",
-  "display": "standalone",
-  "theme_color": "#2e343b",
-  "background_color": "#121212",
-  "scope": "/",
-  "icons": [
-    {
-      "src": "/icons/icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/icon.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ],
-  "orientation": "portrait",
-  "permissions": [
-    "geolocation"
-  ]
-}
+         "name": "Sly App",
+         "short_name": "Sly",
+         "description": "A location-based social networking app to connect with nearby users.",
+         "start_url": "/index.html",
+         "display": "standalone",
+         "theme_color": "#2e343b",
+         "background_color": "#121212",
+         "scope": "/",
+         "icons": [
+           {
+             "src": "/icons/icon-192x192.png",
+             "sizes": "192x192",
+             "type": "image/png",
+             "purpose": "any"
+           },
+           {
+             "src": "/icons/icon-512x512.png",
+             "sizes": "512x512",
+             "type": "image/png",
+             "purpose": "any"
+           }
+         ],
+         "orientation": "portrait"
+       }
