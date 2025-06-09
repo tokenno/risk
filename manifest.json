@@ -2,7 +2,7 @@
          "name": "Sly App",
          "short_name": "Sly",
          "description": "A location-based social networking app to connect with nearby users.",
-         "start_url": "/index.html",
+         "start_url": "index.html",
          "display": "standalone",
          "theme_color": "#2e343b",
          "background_color": "#121212",
