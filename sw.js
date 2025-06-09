@@ -1,7 +1,7 @@
 const CACHE_NAME = 'sly-app-v1';
 const urlsToCache = [
   '/',
-  '/index.html',
+  'index.html',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
   'https://unpkg.com/vue@3/dist/vue.global.prod.js',
@@ -10,8 +10,8 @@ const urlsToCache = [
   'https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js',
   'https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js',
   '/incmess.mp3',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png'
+  'icons/icon-192x192.png',
+  'icons/icon-512x512.png'
 ];
 
 self.addEventListener('install', (event) => {
