@@ -713,11 +713,13 @@ button.online-status {
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
        
-        <div class="map-controls" v-if="mapInitialized">
-          <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-          <button @click="toggleDebugPanel" class="secondary">Debug</button>
-          <button @click="toggleHelp" class="secondary">Help</button>
-        </div>
+     <div class="map-controls" v-if="mapInitialized">
+  <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+  <button @click="toggleDebugPanel" class="secondary">Debug</button>
+  <button @click="forceRefresh" class="secondary">Force Refresh</button>
+  <button @click="toggleHelp" class="secondary">Help</button>
+</div>
+
 
         <div class="distance-controls" v-if="mapInitialized && status === 'ONLINE'">
           <button 
@@ -896,12 +898,16 @@ button.online-status {
     </div>
 
     <!-- Messages Section -->
-    <div class="section" v-if="selectedUser">
-      <h3>Messages with {{ selectedUser.name }}</h3>
-      <div v-if="!isSignedIn" class="message-signin-prompt">
-        <p>Sign in to send messages to {{ selectedUser.name }}</p>
-        <button @click="signIn" class="secondary">Sign In</button>
-      </div>
+<div class="section" v-if="selectedUser">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h3>Messages with {{ selectedUser.name }}</h3>
+    <button @click="selectedUser = null" class="secondary" style="margin-left: 10px;">Close</button>
+  </div>
+  <!-- Rest of the messages section remains the same -->
+  <div v-if="!isSignedIn" class="message-signin-prompt">
+    <p>Sign in to send messages to {{ selectedUser.name }}</p>
+    <button @click="signIn" class="secondary">Sign In</button>
+  </div>
               
       <div v-else>
         <div class="button-group">
@@ -926,31 +932,33 @@ button.online-status {
     </div>
 
     <!-- Debug Panel -->
-    <div class="debug-panel" :class="{ open: showDebugPanel }">
-      <button class="close-debug" @click="toggleDebugPanel">×</button>
-      <h3>Debug Information</h3>
-      <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-      <div>User ID: {{ currentUserId || 'Not set' }}</div>
-      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
-      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
-      <div v-if="activeSoundProfiles.length > 0">
-        Active sounds: 
-        <span v-for="profile in activeSoundProfiles" :key="profile.id">
-          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
-        </span>
-      </div>
-      <div>Audio State: {{ audioState }}</div>
-      <div>
-        Musical Scale: 
-        <select v-model="currentScaleName" @change="updateScale">
-          <option value="pentatonic">Pentatonic</option>
-          <option value="major">Major</option>
-          <option value="minor">Minor</option>
-          <option value="chromatic">Chromatic</option>
-        </select>
-      </div>
-      <button @click="forceRefresh">Force Refresh</button>
-    </div>
+<div class="debug-panel" :class="{ open: showDebugPanel }">
+  <button class="close-debug" @click="toggleDebugPanel">×</button>
+  <h3>Debug Information</h3>
+  <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
+  <div>User ID: {{ currentUserId || 'Not set' }}</div>
+  <div>Location Status: {{ locationStatus }}</div>
+  <div v-if="userLocation">
+    GPS Coordinates: {{ userLocation[0].toFixed(6) }}, {{ userLocation[1].toFixed(6) }}
+  </div>
+  <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+  <div v-if="activeSoundProfiles.length > 0">
+    Active sounds: 
+    <span v-for="profile in activeSoundProfiles" :key="profile.id">
+      {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
+    </span>
+  </div>
+  <div>Audio State: {{ audioState }}</div>
+  <div>
+    Musical Scale: 
+    <select v-model="currentScaleName" @change="updateScale">
+      <option value="pentatonic">Pentatonic</option>
+      <option value="major">Major</option>
+      <option value="minor">Minor</option>
+      <option value="chromatic">Chromatic</option>
+    </select>
+  </div>
+</div>
 
     <!-- Message Panel -->
     <div class="message-panel" v-if="showMessagePanel">
