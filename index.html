@@ -1133,21 +1133,32 @@ async function clearMessages() {
 
 async function sendPanelMessage() {
   if (!panelMessageText.value.trim()) return;
+  if (!isSignedIn.value) {
+    errorMessage.value = 'Please sign in to send messages';
+    return;
+  }
 
   if (messageRecipientType.value === 'group' && groupUsers.value.length > 0) {
     // Send to group
-    const promises = groupUsers.value
-      .filter(user => user.id !== currentUserId.value)
-      .map(user => {
-        return db.collection('users').doc(user.id).update({
-          messages: firebase.firestore.FieldValue.arrayUnion({
-            from: user.value,
-            fromId: currentUserId.value,
-            text: panelMessageText.value,
-            timestamp: new Date().toISOString()
-          })
-        });
+    const validGroupUsers = groupUsers.value.filter(
+      user => user.id !== currentUserId.value && user.id && user.name
+    );
+    
+    if (validGroupUsers.length === 0) {
+      errorMessage.value = 'No valid users in the group to send messages to';
+      return;
+    }
+
+    const promises = validGroupUsers.map(groupUser => {
+      return db.collection('users').doc(groupUser.id).update({
+        messages: firebase.firestore.FieldValue.arrayUnion({
+          from: user.value, // Use the sender's username
+          fromId: currentUserId.value,
+          text: panelMessageText.value,
+          timestamp: new Date().toISOString()
+        })
       });
+    });
 
     try {
       await Promise.all(promises);
@@ -1158,8 +1169,9 @@ async function sendPanelMessage() {
         timestamp: new Date().toISOString()
       });
       panelMessageText.value = '';
+      errorMessage.value = 'Group message sent successfully';
     } catch (error) {
-      errorMessage.value = "Failed to send group message: " + error.message;
+      errorMessage.value = 'Failed to send group message: ' + error.message;
     }
   } else if (messageRecipientType.value === 'user' && selectedMessageRecipient.value) {
     // Send to individual user
@@ -1180,9 +1192,12 @@ async function sendPanelMessage() {
         timestamp: new Date().toISOString()
       });
       panelMessageText.value = '';
+      errorMessage.value = 'Message sent successfully';
     } catch (error) {
-      errorMessage.value = "Failed to send message: " + error.message;
+      errorMessage.value = 'Failed to send message: ' + error.message;
     }
+  } else {
+    errorMessage.value = 'Please select a valid recipient or group';
   }
 }
 
@@ -1198,6 +1213,8 @@ async function sendPanelMessage() {
             }
           }
         }, 200);
+          
+          
           
           function updateMapLocation(newLocation) {
   if (!map || !newLocation) return;
@@ -1218,6 +1235,7 @@ async function sendPanelMessage() {
     map.setView(newLocation, 18);
   }
 }
+          
 
         function toggleHelp() {
           showHelp.value = !showHelp.value;
