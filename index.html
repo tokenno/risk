@@ -625,17 +625,17 @@ button.online-status {
     font-size: 1rem;
   }
 }
-    </style>
+</style>
 </head>
 <body>
   <div id="app" class="container">
-      <div 
-  v-if="showMessageAlert && messageAlert" 
-  class="message-alert" 
-  @click="dismissMessageAlert"
->
-  📩 New message from {{ messageAlert.from }} – click to open
-</div>
+    <div 
+      v-if="showMessageAlert && messageAlert" 
+      class="message-alert" 
+      @click="dismissMessageAlert"
+    >
+      📩 New message from {{ messageAlert.from }} – click to open
+    </div>
 
     <!-- Help Panel -->
     <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
@@ -644,7 +644,7 @@ button.online-status {
       <h3>Sly</h3>
       <p>A location-based social networking app, capturing the essence of connecting with nearby users in various ways.</p>
      
-            <h3>Important!</h3>
+      <h3>Important!</h3>
       <ul>
         <li>Only your GPS Position DATA are saved in the app and <strong>only while you using it. </strong></li>
         <li>After one hour of inactivity <strong>all DATA are delete from the server</strong>, no matter. </li>
@@ -652,9 +652,9 @@ button.online-status {
         <li>We want to keep Sly <strong>open</strong> but <strong>safe.</strong> </li>
       </ul>
         
-        <h3>Basic Functions</h3>
+      <h3>Basic Functions</h3>
       <ul>
-  <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
+        <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
         <li><strong>Change Name:</strong> Update your display name.</li>
         <li><strong>Sound On/Off:</strong> Toggle audio notifications.</li>
         <li><strong>Help:</strong> Show/hide this help panel.</li>
@@ -692,18 +692,14 @@ button.online-status {
         <li><strong>Safety and Coordination:</strong> You're hiking with friends and want to ensure no one gets lost.</li>
         <li><strong>Casual Meetups:</strong> You're in a new city and want to connect with nearby users.</li>
         <li><strong>Nightlife Connections:</strong> At a club or a party, use Sly to spot nearby users.</li>
-        
       </ul>
-       
     </div>
-  
 
-<div class="section">
-  <div style="display: flex; align-items: center; gap: 12px;">
-    <img src="sly-trans-512.png" alt="Sly Logo" width="100" height="100" style="vertical-align: middle;">
- 
-  </div>
-</div>
+    <div class="section">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <img src="sly-trans-512.png" alt="Sly Logo" width="100" height="100" style="vertical-align: middle;">
+      </div>
+    </div>
 
     <div class="section">
       <h3>Your Location</h3>
@@ -717,23 +713,22 @@ button.online-status {
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
        
-          
-     <div class="map-controls" v-if="mapInitialized">
-  <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-  <button @click="toggleDebugPanel" class="secondary">Debug</button>
-  <button @click="toggleHelp" class="secondary">Help</button>
-</div>
+        <div class="map-controls" v-if="mapInitialized">
+          <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+          <button @click="toggleDebugPanel" class="secondary">Debug</button>
+          <button @click="toggleHelp" class="secondary">Help</button>
+        </div>
 
-<div class="distance-controls" v-if="mapInitialized && status === 'ONLINE'">
-  <button 
-    v-for="option in distanceOptions" 
-    :key="option.value"
-    @click="selectDistance(option.value)"
-    :class="{ active: selectedDistance === option.value }"
-  >
-    {{ option.label }}
-  </button>
-</div>
+        <div class="distance-controls" v-if="mapInitialized && status === 'ONLINE'">
+          <button 
+            v-for="option in distanceOptions" 
+            :key="option.value"
+            @click="selectDistance(option.value)"
+            :class="{ active: selectedDistance === option.value }"
+          >
+            {{ option.label }}
+          </button>
+        </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
     </div>
@@ -743,28 +738,20 @@ button.online-status {
         <span>{{ user.charAt(0).toUpperCase() }}</span>
         <div>
           <div>{{ user }}</div>
-              
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
-   
         </div>
       </div>
-        <br>
-         <div class="message-notification">
-      <button @click="toggleStatus" :class="{ 'online-status': status === 'ONLINE' }">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
-        
-      <button @click="changeName">Change Name</button>
-         <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-     
+      <br>
+      <div class="message-notification">
+        <button @click="toggleStatus" :class="{ 'online-status': status === 'ONLINE' }">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
+        <button @click="changeName">Change Name</button>
+        <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
         <button @click="toggleMessagePanel" class="message-boxes">
           Messages
           <span v-if="unreadMessageCount > 0" class="message-notification-badge">{{ unreadMessageCount }}</span>
-              
         </button>
       </div>
-   
-     
- 
     </div>
 
     <div class="section audio-permission" v-if="showAudioPermission">
@@ -773,6 +760,27 @@ button.online-status {
       <button @click="enableAudio">Enable Sound</button>
     </div>
 
+    <!-- Group Management Section - Always Visible -->
+    <div class="section">
+      <h3>Group Management</h3>
+      <div class="button-group">
+        <button 
+          @click="createGroupFromSelected" 
+          :disabled="selectedUsersForGroup.length === 0"
+        >
+          Create Group with Selected Users
+        </button>
+        <button 
+          @click="clearGroup" 
+          :disabled="groupUsers.length === 0"
+          class="secondary"
+        >
+          Clear Group
+        </button>
+      </div>
+    </div>
+
+    <!-- Group Alerts Section - Only shown when group exists -->
     <div class="section" v-if="groupUsers.length > 0">
       <h3>Group Alerts</h3>
       <div class="button-group">
@@ -791,231 +799,205 @@ button.online-status {
       <div v-if="groupAlertMessage" class="error">{{ groupAlertMessage }}</div>
     </div>
 
+    <!-- User List Section -->
     <div class="section">
-     <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-     :key="user.id" 
-     class="user-list-item"
-     :class="{ selected: selectedUser?.id === user.id }"
-     :data-user-id="user.id"
-     @click="selectUser(user)">
-  
-  <input 
-    v-if="!groupUsers.length"
-    type="checkbox" 
-    :value="user.id" 
-    v-model="selectedUsersForGroup" 
-    @click.stop 
-    :disabled="user.id === currentUserId"
-    class="user-checkbox"
-  >
-  
-  <div>{{ user.name }}</div>
-  
-  <div v-if="user.distance === null">Global</div>
-  <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
-  <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
-  
-  <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-  
-  <button 
-    v-if="user.id !== currentUserId" 
-    @click.stop="toggleFollow(user)"
-    :class="{ following: followedUserId === user.id }"
-    class="secondary"
-  >
-    {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-  </button>
-</div>
-<div v-for="user in groupUsers" 
-     :key="user.id" 
-     class="user-list-item"
-     :class="{ selected: selectedUser?.id === user.id }"
-     :data-user-id="user.id"
-     @click="selectUser(user)">
-  
-  <div>{{ user.name }}</div>
-  
-  <div v-if="user.distance === null">Global</div>
-  <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
-  <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
-  
-  <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-  
-  <button 
-    v-if="user.id !== currentUserId" 
-    @click.stop="toggleFollow(user)"
-    :class="{ following: followedUserId === user.id }"
-    class="secondary"
-  >
-    {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-  </button>
-</div>
-   <button v-if="selectedUser && selectedUser.id" @click="pokeUser" class="secondary" :disabled="isPokeCooldown">
-  Poke {{ selectedUser.name }}
-</button>
-      <button 
-        v-if="selectedUser" 
-        @click="sendLocation"
-        class="secondary"
+      <h3>Nearby Users</h3>
+      <div v-if="loadingNearby">Loading nearby users...</div>
+      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
+      
+      <!-- User List Items -->
+      <div 
+        v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
+        :key="user.id" 
+        class="user-list-item"
+        :class="{ selected: selectedUser?.id === user.id, 'flash-user': user.flash }"
+        :data-user-id="user.id"
+        @click="selectUser(user)"
       >
-        Send Location to {{ selectedUser.name }}
-      </button>
+        <input 
+          type="checkbox" 
+          :value="user.id" 
+          v-model="selectedUsersForGroup" 
+          @click.stop 
+          :disabled="user.id === currentUserId"
+          class="user-checkbox"
+        >
+        
+        <div>{{ user.name }}</div>
+        
+        <div v-if="user.distance === null">Global</div>
+        <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+        <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+        
+        <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+        
+        <button 
+          v-if="user.id !== currentUserId" 
+          @click.stop="toggleFollow(user)"
+          :class="{ following: followedUserId === user.id }"
+          class="secondary"
+        >
+          {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+        </button>
+      </div>
+      
+      <!-- Group User List (shown when group exists) -->
+      <div v-if="groupUsers.length > 0">
+        <h3>Group Members</h3>
+        <div 
+          v-for="user in groupUsers" 
+          :key="user.id" 
+          class="user-list-item"
+          :class="{ selected: selectedUser?.id === user.id }"
+          :data-user-id="user.id"
+          @click="selectUser(user)"
+        >
+          <div>{{ user.name }}</div>
           
-          <div class="section" v-if="selectedUser">
-  <h3>Messages</h3>
-  <div v-if="!isSignedIn" class="message-signin-prompt">
-    <p>Sign in to send messages to {{ selectedUser.name }}</p>
-    <button @click="signIn" class="secondary">Sign In</button>
-  </div>
-              
-  <div v-else>
-    <div class="button-group">
-      <input 
-        type="text" 
-        v-model="messageText" 
-        placeholder="Type your message"
-        @keyup.enter="sendMessage"
-      >
-      <button @click="sendMessage" :disabled="!messageText">Send</button>
-    </div>
-  </div>
-              
-  <div v-if="messages.length > 0" class="messages-container">
-  <div v-for="msg in messages" :key="msg.id" 
-     class="message" 
-     :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
-  <strong>{{ msg.from }}:</strong> {{ msg.text }}
-  <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-</div>
-  </div>
-</div>
+          <div v-if="user.distance === null">Global</div>
+          <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+          <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+          
+          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+          
+          <button 
+            v-if="user.id !== currentUserId" 
+            @click.stop="toggleFollow(user)"
+            :class="{ following: followedUserId === user.id }"
+            class="secondary"
+          >
+            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+          </button>
+        </div>
+      </div>
+      
+      <!-- User Actions -->
+      <div class="button-group" v-if="selectedUser">
+        <button 
+          v-if="selectedUser && selectedUser.id" 
+          @click="pokeUser" 
+          class="secondary" 
+          :disabled="isPokeCooldown"
+        >
+          Poke {{ selectedUser.name }}
+        </button>
+        <button 
+          v-if="selectedUser" 
+          @click="sendLocation"
+          class="secondary"
+        >
+          Send Location to {{ selectedUser.name }}
+        </button>
+      </div>
+      
       <div v-if="isPokeCooldown" class="poke-cooldown">
         Poke available in {{ pokeCooldownSeconds }} seconds
       </div>
-      <div v-if="loadingNearby">Loading nearby users...</div>
-      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
-      <div v-if="groupUsers.length">
-        <div v-for="user in groupUsers" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }"
-             @click="selectUser(user)">
-          <div>{{ user.name }}</div>
-          <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
+    </div>
+
+    <!-- Messages Section -->
+    <div class="section" v-if="selectedUser">
+      <h3>Messages with {{ selectedUser.name }}</h3>
+      <div v-if="!isSignedIn" class="message-signin-prompt">
+        <p>Sign in to send messages to {{ selectedUser.name }}</p>
+        <button @click="signIn" class="secondary">Sign In</button>
       </div>
+              
       <div v-else>
-        <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }">
+        <div class="button-group">
           <input 
-            type="checkbox" 
-            :value="user.id" 
-            v-model="selectedUsersForGroup" 
-            @click.stop 
-            :disabled="user.id === currentUserId"
+            type="text" 
+            v-model="messageText" 
+            placeholder="Type your message"
+            @keyup.enter="sendMessage"
           >
-          <div @click="selectUser(user)">{{ user.name }}</div>
-          <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-            <div @click="selectUser(user)" v-if="user.distance === null">Global user</div>
-          <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
+          <button @click="sendMessage" :disabled="!messageText">Send</button>
         </div>
       </div>
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
-    </div>
-
- <div class="debug-panel" :class="{ open: showDebugPanel }">
-  <button class="close-debug" @click="toggleDebugPanel">×</button>
-  <h3>Debug Information</h3>
-  <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
-  <div>User ID: {{ currentUserId || 'Not set' }}</div>
-  <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
-  <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
-  <div v-if="activeSoundProfiles.length > 0">
-    Active sounds: 
-    <span v-for="profile in activeSoundProfiles" :key="profile.id">
-      {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
-    </span>
-  </div>
-  <div>Audio State: {{ audioState }}</div>
-  <div>
-    Musical Scale: 
-    <select v-model="currentScaleName" @change="updateScale">
-      <option value="pentatonic">Pentatonic</option>
-      <option value="major">Major</option>
-      <option value="minor">Minor</option>
-      <option value="chromatic">Chromatic</option>
-    </select>
-  </div>
-  <button @click="forceRefresh">Force Refresh</button>
-</div>
-
-<!-- Message Panel -->
-<div class="message-panel" v-if="showMessagePanel">
-  <div class="message-panel-header">
-    <h3>Messages</h3>
-    <div>
-      <button @click="clearMessages" class="secondary" style="margin-right: 5px;">Clear</button>
-      <button @click="toggleMessagePanel" class="secondary">×</button>
-    </div>
-  </div>
-  <div class="message-panel-body">
-    <div class="message-recipient-selector">
-      <select v-model="messageRecipientType">
-        <option value="user">Send to User</option>
-        <option value="group" :disabled="!groupUsers.length">Send to Group</option>
-      </select>
-      <select v-if="messageRecipientType === 'user'" v-model="selectedMessageRecipient">
-        <option v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-                :value="user.id" 
-                :key="user.id">
-          {{ user.name }}
-        </option>
-      </select>
-    </div>
-    <div class="messages-container">
-      <div v-for="msg in messages" :key="msg.id" 
-           class="message" 
-           :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
-        <strong>{{ msg.from }}:</strong> {{ msg.text }}
-        <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+              
+      <div v-if="messages.length > 0" class="messages-container">
+        <div v-for="msg in messages" :key="msg.id" 
+             class="message" 
+             :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
+          <strong>{{ msg.from }}:</strong> {{ msg.text }}
+          <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+        </div>
       </div>
     </div>
-  </div>
-  <div class="message-panel-footer">
-    <input 
-      type="text" 
-      v-model="panelMessageText" 
-      placeholder="Type your message"
-      @keyup.enter="sendPanelMessage"
-      style="width: calc(100% - 70px); margin-right: 5px;"
-    >
-    <button @click="sendPanelMessage" :disabled="!panelMessageText">Send</button>
-  </div>
-</div>
 
-  <!-- Message alert sound (hidden) -->
-  <audio class="message-alert-sound" src="incmess.mp3" preload="auto"></audio>
+    <!-- Debug Panel -->
+    <div class="debug-panel" :class="{ open: showDebugPanel }">
+      <button class="close-debug" @click="toggleDebugPanel">×</button>
+      <h3>Debug Information</h3>
+      <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
+      <div>User ID: {{ currentUserId || 'Not set' }}</div>
+      <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
+      <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
+      <div v-if="activeSoundProfiles.length > 0">
+        Active sounds: 
+        <span v-for="profile in activeSoundProfiles" :key="profile.id">
+          {{ profile.name }} ({{ profile.frequency.toFixed(0) }}Hz)
+        </span>
+      </div>
+      <div>Audio State: {{ audioState }}</div>
+      <div>
+        Musical Scale: 
+        <select v-model="currentScaleName" @change="updateScale">
+          <option value="pentatonic">Pentatonic</option>
+          <option value="major">Major</option>
+          <option value="minor">Minor</option>
+          <option value="chromatic">Chromatic</option>
+        </select>
+      </div>
+      <button @click="forceRefresh">Force Refresh</button>
+    </div>
+
+    <!-- Message Panel -->
+    <div class="message-panel" v-if="showMessagePanel">
+      <div class="message-panel-header">
+        <h3>Messages</h3>
+        <div>
+          <button @click="clearMessages" class="secondary" style="margin-right: 5px;">Clear</button>
+          <button @click="toggleMessagePanel" class="secondary">×</button>
+        </div>
+      </div>
+      <div class="message-panel-body">
+        <div class="message-recipient-selector">
+          <select v-model="messageRecipientType">
+            <option value="user">Send to User</option>
+            <option value="group" :disabled="!groupUsers.length">Send to Group</option>
+          </select>
+          <select v-if="messageRecipientType === 'user'" v-model="selectedMessageRecipient">
+            <option v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
+                    :value="user.id" 
+                    :key="user.id">
+              {{ user.name }}
+            </option>
+          </select>
+        </div>
+        <div class="messages-container">
+          <div v-for="msg in messages" :key="msg.id" 
+               class="message" 
+               :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
+            <strong>{{ msg.from }}:</strong> {{ msg.text }}
+            <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+          </div>
+        </div>
+      </div>
+      <div class="message-panel-footer">
+        <input 
+          type="text" 
+          v-model="panelMessageText" 
+          placeholder="Type your message"
+          @keyup.enter="sendPanelMessage"
+          style="width: calc(100% - 70px); margin-right: 5px;"
+        >
+        <button @click="sendPanelMessage" :disabled="!panelMessageText">Send</button>
+      </div>
+    </div>
+
+    <!-- Message alert sound (hidden) -->
+    <audio class="message-alert-sound" src="incmess.mp3" preload="auto"></audio>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
