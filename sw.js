@@ -1,7 +1,7 @@
 const CACHE_NAME = 'sly-app-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
+  '/risk/',
+  '/risk/index.html',
   '/icon-512x512.png',
   '/icon-192x192.png',
   '/icon-512-maskable.png',
