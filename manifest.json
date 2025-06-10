@@ -1,47 +1,68 @@
 {
   "name": "Sly App",
   "short_name": "Sly",
-  "description": "A location-based social networking app",
+  "description": "A location-based social networking app for connecting with nearby users",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#121212",
   "theme_color": "#2e4053",
   "icons": [
+  
     {
-      "src": "icons/icon-512x512.png",
-      "sizes": "512x512",
-      "type": "image/png",
- "purpose": "any maskable"
-    },
-       {
-      "src": "icons/icon-192x192.png",
+      "src": "/icons/icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
-           {
-      "src": "icon-192x192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-        {
-      "src": "icon-512x512.png",
+ 
+    {
+      "src": "/icons/icon-512x512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-
+      "type": "image/png"
+    }
   ],
-  "categories": ["social", "navigation"],
+  "categories": ["social", "navigation", "lifestyle"],
   "screenshots": [
-
-  ],
-  "related_applications": [
     {
-      "platform": "webapp",
-      "url": "https://github.com/tokenno/risk/blob/main/manifest.json"
+      "src": "/screenshots/screenshot1.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/screenshot2.webp",
+      "sizes": "1920x1080",
+      "type": "image/webp",
+      "form_factor": "wide"
+    }
+  ],
+  "related_applications": [],
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Go Online",
+      "short_name": "Online",
+      "description": "Make yourself visible to nearby users",
+      "url": "/?action=online"
+    },
+    {
+      "name": "View Nearby",
+      "short_name": "Nearby",
+      "description": "See users near your location",
+      "url": "/?action=nearby"
+    },
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "description": "Check your messages",
+      "url": "/?action=messages"
+    }
+  ],
+  "protocol_handlers": [
+    {
+      "protocol": "web+sly",
+      "url": "/?link=%s"
     }
   ]
 }
