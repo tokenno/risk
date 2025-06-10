@@ -2567,6 +2567,8 @@ async function changeName() {
         }
       }
     }
+ // Rest of your existing script...
+  });
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
@@ -2575,8 +2577,9 @@ if ('serviceWorker' in navigator) {
       })
       .catch(err => {
         console.log('ServiceWorker registration failed: ', err);
- 
+      });
   });
+}
   </script>
 </body>
 </html>
