@@ -3,8 +3,7 @@
   "name": "Sly App",
   "short_name": "Sly",
   "description": "A location-based social networking app for connecting with nearby users",
-  "start_url": "/risk",
-    "scope": "/risk/"
+  "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#121212",
