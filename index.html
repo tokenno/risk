@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,7 +67,8 @@ h3 {
   color: var(--text-primary);
   letter-spacing: 0.5px;
 }
-    /* Logo Animation */
+    
+/* Logo Animation */
 .logo-container {
   position: relative;
   width: 100px;
@@ -93,7 +95,7 @@ h3 {
 .logo-img.color-changed {
   filter: sepia(1) hue-rotate(340deg) saturate(2) brightness(0.9); /* Matches dot color #cd6155 */
 }
-
+    
 /* Buttons */
 button {
   padding: 10px 16px;
@@ -731,7 +733,6 @@ button.online-status {
   </div>
 </div>
 
-
     <div class="section">
 
       <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
@@ -1067,7 +1068,66 @@ button.online-status {
       }
     }
 
+function animateLogo() {
+  const canvas = document.querySelector('.logo-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const logoImg = document.querySelector('.logo-img');
+  let time = 0;
+  const duration = 5000; // Animation duration in ms (5 seconds)
+  const fadeDuration = 1000; // Fade-out duration in ms (1 second)
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  let radius = 40; // Starting radius
+  const minRadius = 10; // Radius when hitting the logo
+  const rotationSpeed = 2 * Math.PI / duration; // One full rotation over duration
+  const dotSize = 5; // Size of the dot
+  let alpha = 1; // Dot opacity for fade-out
+  let hasHit = false; // Track if dot has hit the logo
 
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate dot position
+    const angle = time < duration ? rotationSpeed * time : rotationSpeed * duration; // Stop rotation after duration
+    radius = time < duration ? minRadius + (40 - minRadius) * (1 - time / duration) : minRadius; // Reach minRadius
+    const x = centerX + radius * Math.cos(angle);
+    const y = centerY + radius * Math.sin(angle);
+
+    // Draw dot with fading opacity
+    ctx.beginPath();
+    ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
+    ctx.fillStyle = `rgba(205, 97, 85, ${alpha})`; // #cd6155 with alpha
+    ctx.fill();
+
+    time += 16; // Approx 60 FPS
+
+    // Check if dot has reached the logo
+    if (time >= duration && !hasHit) {
+      hasHit = true;
+      logoImg.classList.add('color-changed');
+      setTimeout(() => {
+        logoImg.classList.remove('color-changed');
+      }, 800); // Color change lasts 0.5 seconds
+    }
+
+    // Fade out dot after hitting
+    if (hasHit) {
+      alpha -= 16 / fadeDuration; // Fade over ~1 second
+    }
+
+    // Continue drawing until dot is fully faded
+    if (!hasHit || alpha > 0) {
+      requestAnimationFrame(draw);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// Call the animation once when DOM is loaded
+document.addEventListener('DOMContentLoaded', animateLogo);
+      
     const scales = {
       pentatonic: [0, 2, 4, 7, 9],
       major: [0, 2, 4, 5, 7, 9, 11],
