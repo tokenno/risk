@@ -1067,48 +1067,6 @@ button.online-status {
       }
     }
 
-        function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Calculate dot position
-    const angle = time < duration ? rotationSpeed * time : rotationSpeed * duration; // Stop rotation after duration
-    radius = time < duration ? minRadius + (40 - minRadius) * (1 - time / duration) : minRadius; // Reach minRadius
-    const x = centerX + radius * Math.cos(angle);
-    const y = centerY + radius * Math.sin(angle);
-
-    // Draw dot with fading opacity
-    ctx.beginPath();
-    ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
-    ctx.fillStyle = `rgba(205, 97, 85, ${alpha})`; // #cd6155 with alpha
-    ctx.fill();
-
-    time += 16; // Approx 60 FPS
-
-    // Check if dot has reached the logo
-    if (time >= duration && !hasHit) {
-      hasHit = true;
-      logoImg.classList.add('color-changed');
-      setTimeout(() => {
-        logoImg.classList.remove('color-changed');
-      }, 800); // Color change lasts 0.5 seconds
-    }
-
-    // Fade out dot after hitting
-    if (hasHit) {
-      alpha -= 16 / fadeDuration; // Fade over ~1 second
-    }
-
-    // Continue drawing until dot is fully faded
-    if (!hasHit || alpha > 0) {
-      requestAnimationFrame(draw);
-    }
-  }
-
-  requestAnimationFrame(draw);
-}
-
-// Call the animation once when DOM is loaded
-document.addEventListener('DOMContentLoaded', animateLogo);
 
     const scales = {
       pentatonic: [0, 2, 4, 7, 9],
