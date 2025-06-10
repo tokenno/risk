@@ -20,6 +20,14 @@ const ASSETS_TO_CACHE = [
   'incmess.mp3'
 ];
 
+const offlineFallbackPage = "http//tokeno.net";
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
