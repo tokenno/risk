@@ -1355,79 +1355,57 @@ function formatEventTime(dateString) {
 }
 
 async function searchEvents() {
-  if (!userLocation.value || isNaN(userLocation.value[0]) || isNaN(userLocation.value[1])) {
-    errorMessage.value = 'Valid location is required to search for events';
-    loadingEvents.value = false;
-    return;
-  }
-
-  if (Math.abs(userLocation.value[0]) > 90 || Math.abs(userLocation.value[1]) > 180) {
-    errorMessage.value = 'Invalid coordinates';
-    loadingEvents.value = false;
+  if (!userLocation.value) {
+    errorMessage.value = 'Location is required';
     return;
   }
 
   loadingEvents.value = true;
   events.value = [];
-  clearEventMarkers();
+  errorMessage.value = '';
 
   try {
-    const radiusKm = parseInt(eventSearchRadius.value);
-    const token = 'RPARBXP3AWWG7RHBT465'; // Replace with new Private Token
-    const validSortOptions = ['date', 'distance', 'best'];
-    if (!validSortOptions.includes(eventSearchSort.value)) {
-      eventSearchSort.value = 'date';
-    }
+    // 1. Construct URL properly
+    const url = new URL('https://www.eventbriteapi.com/v3/events/search/');
+    
+    // 2. Add required parameters
+    url.searchParams.append('location.latitude', userLocation.value[0]);
+    url.searchParams.append('location.longitude', userLocation.value[1]);
+    url.searchParams.append('location.within', `${eventSearchRadius.value}km`);
+    url.searchParams.append('expand', 'venue');
+    url.searchParams.append('token', '3L5J4ILQKI3DVVTOUIDY');
 
-    let url = `https://www.eventbriteapi.com/v3/events/search/?` +
-      `location.latitude=${userLocation.value[0]}&` +
-      `location.longitude=${userLocation.value[1]}&` +
-      `location.within=${radiusKm}km&` +
-      `sort_by=${eventSearchSort.value}`;
+    // 3. Debug output
+    console.log('Final API URL:', url.toString());
 
-    if (eventSearchQuery.value) {
-      url += `&q=${encodeURIComponent(eventSearchQuery.value)}`;
-    }
-
-    console.log('Eventbrite API URL:', url);
-
+    // 4. Make the request
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${token}`
+        'Accept': 'application/json'
       }
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      if (response.status === 401) {
-        errorMessage.value = 'Authentication failed. Please check your API token.';
-      } else if (response.status === 404) {
-        errorMessage.value = 'Eventbrite API endpoint not found. Contact support.';
-      } else {
-        errorMessage.value = `API request failed: ${errorData.error_description || 'Unknown error'}`;
-      }
-      throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorData)}`);
-    }
-
-    if (!response.headers.get('content-type')?.includes('application/json')) {
-      throw new Error('Unexpected response format: Expected JSON');
+      const errorData = await response.json();
+      throw new Error(errorData.error_description || 'API request failed');
     }
 
     const data = await response.json();
-    if (data.events) {
+    console.log('API Response:', data);
+
+    if (data.events?.length) {
       events.value = data.events;
       plotEventsOnMap(data.events);
     } else {
-      errorMessage.value = 'No events found in response';
+      errorMessage.value = 'No events found. Try a larger radius.';
     }
   } catch (error) {
-    errorMessage.value = `Failed to fetch events: ${error.message}`;
-    console.error('Eventbrite API error:', error);
+    console.error('Event search failed:', error);
+    errorMessage.value = `Error: ${error.message}`;
   } finally {
     loadingEvents.value = false;
   }
 }
-
 
 function plotEventsOnMap(events) {
   if (!map) return;
