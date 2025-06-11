@@ -95,7 +95,6 @@ h3 {
 .logo-img.color-changed {
   filter: sepia(1) hue-rotate(340deg) saturate(2) brightness(0.9); /* Matches dot color #cd6155 */
 }
-    
 /* Buttons */
 button {
   padding: 10px 16px;
@@ -655,6 +654,84 @@ button.online-status {
     height: 32px;
     font-size: 1rem;
   }
+    /* Eventbrite Events Section */
+.events-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: linear-gradient(145deg, #222, #1a1a1a);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.event-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin-top: 12px;
+}
+
+.event-item {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.event-item:hover {
+  background: #2a2a2a;
+}
+
+.event-item h4 {
+  margin: 0 0 8px;
+  color: var(--accent-color);
+}
+
+.event-item p {
+  margin: 4px 0;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.event-item .event-date {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.event-search-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.event-search-controls input,
+.event-search-controls select {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: #2a2a2a;
+  color: var(--text-primary);
+}
+
+.event-search-controls input {
+  flex: 1;
+  min-width: 200px;
+}
+
+.event-search-controls select {
+  width: 120px;
+}
+
+.event-marker {
+  background-color: #9b59b6;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 10px;
+}
 }
 </style>
 </head>
@@ -812,6 +889,8 @@ button.online-status {
         </button>
       </div>
     </div>
+      
+      
 
     <!-- Group Alerts Section - Only shown when group exists -->
     <div class="section" v-if="groupUsers.length > 0">
@@ -961,6 +1040,55 @@ button.online-status {
         </div>
       </div>
     </div>
+      
+           <div class="section events-section">
+  <h3>Nearby Events</h3>
+  <div class="event-search-controls">
+    <input 
+      type="text" 
+      v-model="eventSearchQuery" 
+      placeholder="Search events..."
+      @keyup.enter="searchEvents"
+    >
+    <select v-model="eventSearchRadius">
+      <option value="5">5 km</option>
+      <option value="10">10 km</option>
+      <option value="25">25 km</option>
+      <option value="50">50 km</option>
+    </select>
+    <select v-model="eventSearchSort">
+      <option value="date">Date</option>
+      <option value="distance">Distance</option>
+      <option value="best">Best</option>
+    </select>
+    <button @click="searchEvents" :disabled="!userLocation">Search</button>
+  </div>
+  <div v-if="loadingEvents" class="loading">Loading events...</div>
+  <div v-else-if="events.length === 0" class="no-events">No events found</div>
+  <div v-else class="event-list">
+    <div 
+      v-for="event in events" 
+      :key="event.id" 
+      class="event-item"
+      @click="focusOnEvent(event)"
+    >
+      <h4>{{ event.name.text }}</h4>
+      <p class="event-date">
+        {{ formatEventDate(event.start.local) }} - 
+        {{ formatEventTime(event.start.local) }}
+      </p>
+      <p>{{ event.venue ? event.venue.name : 'Online' }}</p>
+      <p v-if="event.venue && event.venue.address">
+        {{ event.venue.address.localized_address_display }}
+      </p>
+    </div>  
+          </div>  
+      </div>
+
+      
+      
+ 
+
 
     <!-- Debug Panel -->
 <div class="debug-panel" :class="{ open: showDebugPanel }">
@@ -1034,6 +1162,7 @@ button.online-status {
         <button @click="sendPanelMessage" :disabled="!panelMessageText">Send</button>
       </div>
     </div>
+      
 
     <!-- Message alert sound (hidden) -->
     <audio class="message-alert-sound" src="incmess.mp3" preload="auto"></audio>
@@ -1205,6 +1334,150 @@ const showMessageAlert = ref(false);
   const panelMessageText = ref('');
   const messageRecipientType = ref('user');
   const selectedMessageRecipient = ref(null);
+          
+          const eventSearchQuery = ref('');
+const eventSearchRadius = ref('10');
+const eventSearchSort = ref('date');
+const events = ref([]);
+const loadingEvents = ref(false);
+const eventMarkers = ref([]);
+          
+          
+                // Add these methods
+function formatEventDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString();
+}
+
+function formatEventTime(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+async function searchEvents() {
+  if (!userLocation.value || isNaN(userLocation.value[0]) || isNaN(userLocation.value[1])) {
+    errorMessage.value = 'Valid location is required to search for events';
+    loadingEvents.value = false;
+    return;
+  }
+
+  if (Math.abs(userLocation.value[0]) > 90 || Math.abs(userLocation.value[1]) > 180) {
+    errorMessage.value = 'Invalid coordinates';
+    loadingEvents.value = false;
+    return;
+  }
+
+  loadingEvents.value = true;
+  events.value = [];
+  clearEventMarkers();
+
+  try {
+    const radiusKm = parseInt(eventSearchRadius.value);
+    const token = 'JKJTQ3VYIDNW5SKZMF'; // Replace with new Private Token
+    const validSortOptions = ['date', 'distance', 'best'];
+    if (!validSortOptions.includes(eventSearchSort.value)) {
+      eventSearchSort.value = 'date';
+    }
+
+    let url = `https://www.eventbriteapi.com/v3/events/search/?` +
+      `location.latitude=${userLocation.value[0]}&` +
+      `location.longitude=${userLocation.value[1]}&` +
+      `location.within=${radiusKm}km&` +
+      `sort_by=${eventSearchSort.value}`;
+
+    if (eventSearchQuery.value) {
+      url += `&q=${encodeURIComponent(eventSearchQuery.value)}`;
+    }
+
+    console.log('Eventbrite API URL:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        errorMessage.value = 'Authentication failed. Please check your API token.';
+      } else if (response.status === 404) {
+        errorMessage.value = 'Eventbrite API endpoint not found. Contact support.';
+      } else {
+        errorMessage.value = `API request failed: ${errorData.error_description || 'Unknown error'}`;
+      }
+      throw new Error(`HTTP ${response.status}: ${JSON.stringify(errorData)}`);
+    }
+
+    if (!response.headers.get('content-type')?.includes('application/json')) {
+      throw new Error('Unexpected response format: Expected JSON');
+    }
+
+    const data = await response.json();
+    if (data.events) {
+      events.value = data.events;
+      plotEventsOnMap(data.events);
+    } else {
+      errorMessage.value = 'No events found in response';
+    }
+  } catch (error) {
+    errorMessage.value = `Failed to fetch events: ${error.message}`;
+    console.error('Eventbrite API error:', error);
+  } finally {
+    loadingEvents.value = false;
+  }
+}
+
+
+function plotEventsOnMap(events) {
+  if (!map) return;
+  
+  // Clear existing markers
+  clearEventMarkers();
+  
+  events.forEach((event, index) => {
+    if (!event.venue || !event.venue.latitude || !event.venue.longitude) return;
+    
+    const marker = L.marker([event.venue.latitude, event.venue.longitude], {
+      icon: L.divIcon({
+        html: `<div class="event-marker">${index + 1}</div>`,
+        className: 'event-marker',
+        iconSize: [16, 16]
+      })
+    }).addTo(map).bindPopup(`
+      <b>${event.name.text}</b><br>
+      ${event.venue.name}<br>
+      ${event.start.local ? formatEventDate(event.start.local) : ''}
+    `);
+    
+    eventMarkers.value.push(marker);
+  });
+}
+
+function clearEventMarkers() {
+  eventMarkers.value.forEach(marker => {
+    if (map && marker) map.removeLayer(marker);
+  });
+  eventMarkers.value = [];
+}
+
+function focusOnEvent(event) {
+  if (!event.venue || !map) return;
+  
+  map.setView([event.venue.latitude, event.venue.longitude], 15);
+  
+  // Find and open the marker's popup
+  const eventMarker = eventMarkers.value.find(m => 
+    m.getLatLng().lat === event.venue.latitude && 
+    m.getLatLng().lng === event.venue.longitude
+  );
+  
+  if (eventMarker) {
+    eventMarker.openPopup();
+  }
+}
+          
+          
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
@@ -1753,7 +2026,9 @@ function initMap(location, retries = 3, delay = 1000) {
     tryInit(0);
   });
 }
-        function selectUser(user) {
+    
+
+              function selectUser(user) {
           selectedUser.value = user;
           if (selectedUserMarker && map) {
             map.removeLayer(selectedUserMarker);
@@ -1807,6 +2082,9 @@ function initMap(location, retries = 3, delay = 1000) {
           }
           updateNearbyMarkers();
         }
+      
+
+
 
 function focusOnMyLocation() {
   if (map && userLocation.value) {
@@ -2623,7 +2901,17 @@ async function changeName() {
     selectedMessageRecipient,
     messageAlert,
     showMessageAlert,
-    dismissMessageAlert
+    dismissMessageAlert,
+            eventSearchQuery,
+eventSearchRadius,
+eventSearchSort,
+events,
+loadingEvents,
+searchEvents,
+formatEventDate,
+formatEventTime,
+focusOnEvent
+            
         };
       }
     }).mount('#app');
