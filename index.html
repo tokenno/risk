@@ -1,310 +1,445 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="manifest" href="manifest.json">
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sly App</title>
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-analytics-compat.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 <style>
-  body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    margin: 0;
-    padding: 10px;
-    background-color: #1a1a1a;
-    color: #e0e0e0;
-  }
-  .container {
-    max-width: 700px;
-    margin: 0 auto;
-    background: #2c2c2c;
-    border-radius: 6px;
-    padding: 15px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-    position: relative;
-    overflow: hidden;
-  }
-  .section {
-    margin-bottom: 15px;
-    padding: 15px;
-    border: 1px solid #444;
-    border-radius: 4px;
-    background: #333;
-  }
-  h3 {
-    margin: 0 0 12px;
-    font-size: 1.1em;
-    color: #fff;
-  }
-  button {
-    padding: 8px 12px;
-    background: #28a745;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85em;
-    transition: background 0.2s;
-    margin-right: 8px;
-    margin-bottom: 8px;
-  }
-    button:active {
-  background: #dc3545 !important;
-  transform: scale(0.98);
-}
-    /* This will make distance buttons stay red when active/pressed */
-.button-group button.active {
-  background: #dc3545 !important;
-  box-shadow: 0 0 0 2px #dc3545;
+/* General Styles */
+:root {
+  --primary-color: #2e4053;
+  --secondary-color: #6c757d;
+  --accent-color: #cd6155;
+  --danger-color: #dc3545;
+  --background-dark: #121212;
+  --surface-dark: #1e1e1e;
+  --text-primary: #fae5d3;
+  --text-secondary: #b0b0b0;
+  --border-color: #333;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  --transition: all 0.3s ease;
 }
 
-  button:hover {
-    background: #a82333;
-  }
-  button.warning {
-    background: #dc3545;
-  }
-  button.warning:hover {
-    background: #c82333;
-  }
-  button.secondary {
-    background: #6c757d;
-  }
-  button.secondary:hover {
-    background: #2a6268;
-  }
-  .error {
-    color: #ff4d4d;
-    font-size: 0.8em;
-    margin-top: 8px;
-  }
-  .user-list div {
-    padding: 8px;
-    border-bottom: 1px solid #444;
-    transition: background 0.2s;
-    color: #e0e0e0;
-    cursor: pointer;
-  }
-  .user-list div:hover {
-    background: #3a3a3a;
-  }
-  .user-list div.selected {
-    background: #3a3a3a;
-    border-left: 3px solid #28a745;
-  }
-  .user-list div:last-child {
-    border-bottom: none;
-  }
-  #map {
-    height: 300px;
-    width: 100%;
-    border: 1px solid #555;
-    border-radius: 4px;
-    margin-top: 8px;
-    background: #1a1a1a;
-  }
-  @media (max-width: 768px) {
-    #map {
-      height: 60vh;
-    }
-  }
-  .map-loading {
-    align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #888;
-  }
-  .map-controls {
-    margin-top: 8px;
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-  .audio-permission {
-    background: #444;
-    padding: 15px;
-    border-radius: 4px;
-    margin-bottom: 15px;
-    text-align: center;
-  }
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .user-info > span {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background-color: #ff0000;
-    border-radius: 50%;
-    color: white;
-    font-weight: bold;
-    font-size: 1.2em;
-  }
-  .user-info > div > div:first-child {
-    font-weight: bold;
-    margin-bottom: 4px;
-  }
-  .button-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
-  }
-  button.active {
-    background: #28a745;
-    box-shadow: 0 0 0 2px #28a745;
-  }
-  .poke-cooldown {
-    font-size: 0.8em;
-    color: #888;
-    margin-top: 5px;
-  }
-  button.following {
-    background: #007bff !important;
-  }
-  button.following:hover {
-    background: #0056b3 !important;
-  }
-  .user-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-  }
-  @keyframes blink {
-    0% { opacity: 1; }
-    50% { opacity: 0.3; }
-    100% { opacity: 1; }
-  }
-  .blinking-marker {
-    animation: blink 2s infinite;
-  }
-  .received-location-marker {
-    animation: blink 1s infinite;
-    background-color: #ff00ff !important;
-  }
-  @media (max-width: 600px) {
-    .container {
-      padding: 10px;
-    }
-    .section {
-      padding: 12px;
-    }
-    .button-group {
-      flex-direction: column;
-    }
-    .button-group button {
-      width: 100%;
-      margin-right: 0;
-    }
-    .user-list {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-  }
-  .help-panel {
-    position: fixed;
-    top: 0;
-    right: -450px;
-    width: 350px;
-    height: 90%;
-    background-color: #2c2c2c;
-    z-index: 1000;
-    transition: right 0.3s ease;
-    padding: 20px;
-    overflow-y: auto;
-    color: #e0e0e0;
-    box-shadow: none;
-      padding-bottom: 40px;
-  }
-  .help-panel.open {
-    right: 0;
-  }
-  .help-panel h3 {
-    color: #fff;
-    margin-top: 0;
-    border-bottom: 1px solid #444;
-    padding-bottom: 20px;
-  }
-  .help-panel p {
-    margin-bottom: 15px;
-    line-height: 1.5;
-  }
-  .help-panel ul {
-    padding-left: 20px;
-    margin-bottom: 15px;
-  }
-  .help-panel li {
-    margin-bottom: 8px;
-  }
-  .help-panel button.close-help {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    background: #dc3545;
-    border: none;
-    color: white;
-    border-radius: 50%;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-  }
-  .help-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    display: none;
-  }
-  .help-overlay.visible {
-    display: block;
-  }
-  @media (max-width: 600px) {
-    .help-panel {
-      width: 100%;
-      right: -100%;
-    }
-    .help-panel.open {
-      right: 0;
-      box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
-    }
-  }
-  .user-list input[type="checkbox"] {
-    margin-right: 8px;
-    cursor: pointer;
-    accent-color: #28a745;
-  }
-  .user-list input[type="checkbox"]:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
-  }
-    .debug-panel {
+body {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  margin: 0;
+  padding: 16px;
+  background-color: var(--background-dark);
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+/* Container */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: var(--surface-dark);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow);
+  position: relative;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: linear-gradient(145deg, #222, #1a1a1a);
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+/* Headings */
+h3 {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  letter-spacing: 0.5px;
+}
+    
+/* Logo Animation */
+.logo-container {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-canvas {
   position: absolute;
-  bottom: -300px;
+  top: 0;
   left: 0;
   width: 100%;
-  background-color: #2c2c2c;
+  height: 100%;
+}
+
+.logo-img {
+  width: 100%;
+  height: 100%;
+  transition: filter 0.5s ease;
+}
+
+.logo-img.color-changed {
+  filter: sepia(1) hue-rotate(340deg) saturate(2) brightness(0.9); /* Matches dot color #cd6155 */
+}
+/* Buttons */
+button {
+  padding: 10px 16px;
+  background: var(--primary-color);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: var(--transition);
+  margin-right: 8px;
+  margin-bottom: 8px;
+}
+
+button:hover {
+  background: #273746;
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+button.warning {
+  background: var(--danger-color);
+}
+
+button.warning:hover {
+  background: #c82333;
+}
+
+button.secondary {
+  background: var(--secondary-color);
+}
+
+button.secondary:hover {
+  background: #5a6268;
+}
+
+button.active {
+  background: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+button.following {
+  background: var(--primary-color);
+}
+
+button.following:hover {
+  background: #0056b3;
+}
+
+button.online-status {
+  animation: onlinePulse 4s infinite;
+}
+
+/* Error Messages */
+.error {
+  color: var(--danger-color);
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+/* User List */
+.user-list div {
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: var(--transition);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+    /* Add this to your existing CSS */
+.user-list-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: var(--transition);
+  cursor: pointer;
+}
+
+.user-list-item:hover {
+  background: #2a2a2a;
+}
+
+.user-list-item.selected {
+  background: #2a2a2a;
+  border-left: 4px solid var(--accent-color);
+}
+
+.user-list-item > div:first-child {
+  flex: 1;
+  min-width: 100px;
+}
+
+.user-list-item > div:not(:first-child) {
+  min-width: 80px;
+  text-align: right;
+}
+
+.user-list-item button {
+  margin: 0;
+  white-space: nowrap;
+}
+
+.user-checkbox {
+  margin-right: 8px;
+}
+
+.user-list div:hover {
+  background: #2a2a2a;
+}
+
+.user-list div.selected {
+  background: #2a2a2a;
+  border-left: 4px solid var(--accent-color);
+}
+
+.user-list div:last-child {
+  border-bottom: none;
+}
+
+.user-list input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
+.user-list input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Map */
+#map {
+  height: 320px;
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  margin-top: 12px;
+  background: var(--background-dark);
+}
+
+.map-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+}
+
+.map-controls {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+    
+    .distance-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.distance-controls button {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.distance-controls button.active {
+  background: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+/* Audio Permission */
+.audio-permission {
+  background: #2a2a2a;
+  padding: 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+/* User Info */
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-info > span {
+  width: 40px;
+  height: 40px;
+  background-color: var(--danger-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.user-info > div > div:first-child {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+/* Button Group */
+.button-group {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.button-group input[type="number"] {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: #2a2a2a;
+  color: var(--text-primary);
+  width: 120px;
+}
+
+/* Poke Cooldown */
+.poke-cooldown {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+/* Animations */
+@keyframes blink {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.blinking-marker {
+  animation: blink 2s infinite;
+}
+
+.received-location-marker {
+  animation: blink 1s infinite;
+  background-color: #ff00ff !important;
+}
+
+@keyframes flash {
+  0% { background-color: #ffd700; }
+  50% { background-color: transparent; }
+  100% { background-color: #ffd700; }
+}
+
+.flash-user {
+  animation: flash 1s ease-in-out infinite;
+}
+
+@keyframes onlinePulse {
+  0% { background-color: var(--accent-color); }
+  50% { background-color: var(--danger-color); }
+  100% { background-color: var(--accent-color); }
+}
+
+/* Help Panel */
+.help-panel {
+  position: fixed;
+  top: 0;
+  right: -400px;
+  width: 350px;
+  height: 100%;
+  background: var(--surface-dark);
   z-index: 1000;
-  transition: bottom 0.3s ease;
+  transition: right var(--transition);
   padding: 20px;
-  border-top: 1px solid #444;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.5);
-  max-height: 300px;
+  overflow-y: auto;
+  box-shadow: var(--shadow);
+}
+
+.help-panel.open {
+  right: 0;
+}
+
+.help-panel h3 {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+}
+
+.help-panel p {
+  margin-bottom: 16px;
+}
+
+.help-panel ul {
+  padding-left: 20px;
+  margin-bottom: 16px;
+}
+
+.help-panel li {
+  margin-bottom: 8px;
+}
+
+.help-panel button.close-help {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--danger-color);
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.help-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 999;
+  display: none;
+}
+
+.help-overlay.visible {
+  display: block;
+}
+
+/* Debug Panel */
+.debug-panel {
+  position: fixed;
+  bottom: -350px;
+  left: 150;
+  width: 43%;
+  background: var(--surface-dark);
+  z-index: 1000;
+  transition: bottom var(--transition);
+  padding: 20px;
+  border-top: 1px solid var(--border-color);
+  box-shadow: var(--shadow);
+  max-height: 250px;
   overflow-y: auto;
 }
 
@@ -314,92 +449,224 @@
 
 .close-debug {
   position: absolute;
-  top: 10px;
-  right: 40px;
-  background: #dc3545;
-  border: none;
-  color: white;
+  top: 12px;
+  right: 12px;
+  background: var(--danger-color);
   border-radius: 50%;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-    z-index: 1001;
 }
 
-@media (max-width: 600px) {
-  .debug-panel {
-    padding: 15px;
-  }
-    .message-signin-prompt {
-  background: #444;
-  padding: 15px;
-  border-radius: 4px;
+/* Message Styles */
+.message-signin-prompt {
+  background: #2a2a2a;
+  padding: 16px;
+  border-radius: 8px;
   text-align: center;
-  margin-bottom: 10px;
-}
-
-.message-signin-prompt p {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .messages-container {
-  margin-top: 10px;
-  max-height: 200px;
+  margin-top: 12px;
+  max-height: 250px;
   overflow-y: auto;
-  border: 1px solid #444;
-  border-radius: 4px;
-  padding: 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px;
+      display: flex;
+  flex-direction: column-reverse; /* This makes new messages appear at the top */
 }
 
 .message {
-  padding: 6px;
-  border-bottom: 1px solid #444;
+  padding: 8px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .message:last-child {
   border-bottom: none;
 }
 
+.message.sent {
+  background: #80b7da;
+  color: #000;
+}
 .message small {
-  color: #888;
-  font-size: 0.8em;
-  margin-left: 8px;
+  color: var(--text-primary); /* Changed to white */
+  font-size: 0.8rem;
 }
-    .new-message-alert {
+.message.received {
+  background: var(--primary-color);
+  color: var(--text-primary);
+}
+
+
+/* Message Alert */
+.message-alert {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  background-color: #28a745;
-  color: white;
-  padding: 10px 15px;
-  border-radius: 5px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--primary-color);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-weight: 500;
+  box-shadow: var(--shadow);
   z-index: 1001;
-  animation: slideIn 0.3s ease-out;
+  cursor: pointer;
+  animation: pulse 1.5s infinite;
 }
 
-@keyframes slideIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }
 
-.message-controls {
+/* Message Panel */
+.message-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 320px;
+  background: var(--surface-dark);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  z-index: 1000;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+}
+
+.message-panel-header {
+  padding: 12px;
+  background: #222;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
-  margin-top: 10px;
+  align-items: center;
 }
+
+.message-panel-body {
+  padding: 12px;
+  flex-grow: 1;
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.message-panel-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  gap: 8px;
+}
+
+.message-panel-footer input {
+  flex-grow: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: #2a2a2a;
+  color: var(--text-primary);
+}
+
+.message-notification {
+  position: relative;
+}
+
+.message-notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--danger-color);
+  color: var(--text-primary);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    padding: 12px;
+  }
+
+  .section {
+    padding: 12px;
+  }
+
+  #map {
+    height: 50vh;
+  }
+
+  .button-group {
+    flex-direction: column;
+  }
+
+  .button-group button {
+    width: 100%;
+    margin-right: 0;
+  }
+
+  .user-list {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .help-panel {
+    width: 100%;
+    right: -100%;
+  }
+
+  .help-panel.open {
+    right: 0;
+  }
+
+  .message-panel {
+    width: calc(100% - 48px);
+    left: 24px;
+    right: 24px;
+  }
+}
+
+@media (max-width: 480px) {
+  button {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+
+  h3 {
+    font-size: 1.1rem;
+  }
+
+  .user-info > span {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
 }
 </style>
 </head>
 <body>
   <div id="app" class="container">
-      <div class="new-message-alert" v-if="showNewMessageAlert">
-  New message from {{ newMessageFrom }}!
-  <button @click="showNewMessageAlert = false" style="margin-left: 10px;">×</button>
-</div>
+    <div 
+      v-if="showMessageAlert && messageAlert" 
+      class="message-alert" 
+      @click="dismissMessageAlert"
+    >
+      📩 New message from {{ messageAlert.from }} – click to open
+    </div>
+
     <!-- Help Panel -->
     <div class="help-overlay" :class="{ visible: showHelp }" @click="toggleHelp"></div>
     <div class="help-panel" :class="{ open: showHelp }">
@@ -407,7 +674,7 @@
       <h3>Sly</h3>
       <p>A location-based social networking app, capturing the essence of connecting with nearby users in various ways.</p>
      
-            <h3>Important!</h3>
+      <h3>Important!</h3>
       <ul>
         <li>Only your GPS Position DATA are saved in the app and <strong>only while you using it. </strong></li>
         <li>After one hour of inactivity <strong>all DATA are delete from the server</strong>, no matter. </li>
@@ -415,9 +682,9 @@
         <li>We want to keep Sly <strong>open</strong> but <strong>safe.</strong> </li>
       </ul>
         
-        <h3>Basic Functions</h3>
+      <h3>Basic Functions</h3>
       <ul>
-  <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
+        <li><strong>Go Online/Offline:</strong> Toggle your visibility to other users.</li>
         <li><strong>Change Name:</strong> Update your display name.</li>
         <li><strong>Sound On/Off:</strong> Toggle audio notifications.</li>
         <li><strong>Help:</strong> Show/hide this help panel.</li>
@@ -451,44 +718,48 @@
       <h3>Scenarios</h3>
       <ul>
         <li><strong>Social Events:</strong> Share your location, follow friends and use the map to navigate to their position.</li>
-        <li><strong>Group Activities:</strong> You’re organizing a scavenger hunt with a group of players.</li>
-        <li><strong>Safety and Coordination:</strong> You’re hiking with friends and want to ensure no one gets lost.</li>
-        <li><strong>Casual Meetups:</strong> You’re in a new city and want to connect with nearby users.</li>
+        <li><strong>Group Activities:</strong> You're organizing a scavenger hunt with a group of players.</li>
+        <li><strong>Safety and Coordination:</strong> You're hiking with friends and want to ensure no one gets lost.</li>
+        <li><strong>Casual Meetups:</strong> You're in a new city and want to connect with nearby users.</li>
         <li><strong>Nightlife Connections:</strong> At a club or a party, use Sly to spot nearby users.</li>
-        
       </ul>
-       
     </div>
-  
 
 <div class="section">
-  <div style="display: flex; align-items: center; gap: 12px;">
-    <svg width="40" height="40" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="50" cy="50" r="40" fill="#28a745"/>
-      <path d="M50 20 A30 30 0 0 1 80 50 A30 30 0 0 1 50 80 A30 30 0 0 1 20 50 A30 30 0 0 1 50 20" fill="none" stroke="#FFF" stroke-width="8"/>
-      <circle cx="50" cy="30" r="8" fill="#FFF"/>
-    </svg>
-    <span style="font-size: 0.9em; color: #e0e0e0;">
-    <span style="font-size: 1.4em; color: #28a745; font-weight: bold;">Sly</span>
-    </span>
+  <div class="logo-container">
+    <canvas class="logo-canvas" width="120" height="120"></canvas>
+    <img src="icons/icon-512-maskable.png" alt="Sly Logo" class="logo-img">
   </div>
 </div>
 
     <div class="section">
-      <h3>Your Location</h3>
+
       <div v-if="locationStatus === 'loading'">Acquiring your location...</div>
       <div v-else-if="locationStatus === 'unavailable'">Location not available or waiting to load map</div>
       <div v-else>
-        <div v-if="!followedUserId">Latitude: {{ userLocation[0].toFixed(6) }}</div>
-        <div v-if="!followedUserId">Longitude: {{ userLocation[1].toFixed(6) }}</div>
+     
         <div v-if="followedUserId">Following: {{ followedUserName }} (Lat: {{ followedUserLocation[0].toFixed(6) }}, Lon: {{ followedUserLocation[1].toFixed(6) }})</div>
         <div id="map">
           <div v-if="!mapInitialized" class="map-loading">Loading map...</div>
         </div>
-        <div class="map-controls" v-if="mapInitialized">
-          <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
-         <button @click="toggleDebugPanel" class="secondary">Debug</button>
-      <button @click="toggleHelp" class="secondary">Help</button>
+       
+     <div class="map-controls" v-if="mapInitialized">
+  <button class="secondary" @click="focusOnMyLocation">Focus on {{ followedUserId ? 'Me' : 'Me' }}</button>
+  <button @click="toggleDebugPanel" class="secondary">Debug</button>
+  <button @click="forceRefresh" class="secondary">Force Refresh</button>
+  <button @click="toggleHelp" class="secondary">Help</button>
+</div>
+
+
+        <div class="distance-controls" v-if="mapInitialized && status === 'ONLINE'">
+          <button 
+            v-for="option in distanceOptions" 
+            :key="option.value"
+            @click="selectDistance(option.value)"
+            :class="{ active: selectedDistance === option.value }"
+          >
+            {{ option.label }}
+          </button>
         </div>
       </div>
       <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
@@ -499,22 +770,20 @@
         <span>{{ user.charAt(0).toUpperCase() }}</span>
         <div>
           <div>{{ user }}</div>
-              
           <div v-if="status === 'ONLINE'">Currently online</div>
           <div v-else>Currently offline</div>
-   
         </div>
       </div>
-        <br>
-      <button @click="toggleStatus">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
-        
-      <button @click="changeName">Change Name</button>
-      <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
-        <button v-if="isSignedIn" @click="signOut" class="secondary">Sign Out</button>
-
-        
-        
- 
+      <br>
+      <div class="message-notification">
+        <button @click="toggleStatus" :class="{ 'online-status': status === 'ONLINE' }">{{ status === 'ONLINE' ? 'Go Offline' : 'Go Online' }}</button>
+        <button @click="changeName">Change Name</button>
+        <button @click="toggleSound">{{ soundEnabled ? '🔔 Sound On' : '🔕 Sound Off' }}</button>
+        <button @click="toggleMessagePanel" class="message-boxes">
+          Messages
+          <span v-if="unreadMessageCount > 0" class="message-notification-badge">{{ unreadMessageCount }}</span>
+        </button>
+      </div>
     </div>
 
     <div class="section audio-permission" v-if="showAudioPermission">
@@ -523,6 +792,27 @@
       <button @click="enableAudio">Enable Sound</button>
     </div>
 
+    <!-- Group Management Section - Always Visible -->
+    <div class="section">
+      <h3>Group Management</h3>
+      <div class="button-group">
+        <button 
+          @click="createGroupFromSelected" 
+          :disabled="selectedUsersForGroup.length === 0"
+        >
+          Create Group with Selected Users
+        </button>
+        <button 
+          @click="clearGroup" 
+          :disabled="groupUsers.length === 0"
+          class="secondary"
+        >
+          Clear Group
+        </button>
+      </div>
+    </div>
+
+    <!-- Group Alerts Section - Only shown when group exists -->
     <div class="section" v-if="groupUsers.length > 0">
       <h3>Group Alerts</h3>
       <div class="button-group">
@@ -541,129 +831,146 @@
       <div v-if="groupAlertMessage" class="error">{{ groupAlertMessage }}</div>
     </div>
 
+    <!-- User List Section -->
     <div class="section">
-      <h3>Nearby Users ({{ groupUsers.length || nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length }})</h3>
-      <div v-if="!groupUsers.length" class="button-group">
-        <button class="secondary" @click="createGroupFromSelected" :disabled="selectedUsersForGroup.length === 0">
-          Create Group with Selected Users
-        </button>
-      </div>
-      <div v-else class="button-group">
-        <p>Group of {{ groupUsers.length }} users</p>
-        <button class="secondary" @click="clearGroup">Clear Group</button>
-      </div>
-      <div class="button-group">
-        <button 
-          v-for="distance in distanceOptions" 
-          :key="distance.value"
-          :class="{ active: selectedDistance === distance.value }"
-          @click="selectDistance(distance.value)"
+      <h3>Nearby Users</h3>
+      <div v-if="loadingNearby">Loading nearby users...</div>
+      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
+      
+      <!-- User List Items -->
+      <div 
+        v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
+        :key="user.id" 
+        class="user-list-item"
+        :class="{ selected: selectedUser?.id === user.id, 'flash-user': user.flash }"
+        :data-user-id="user.id"
+        @click="selectUser(user)"
+      >
+        <input 
+          type="checkbox" 
+          :value="user.id" 
+          v-model="selectedUsersForGroup" 
+          @click.stop 
+          :disabled="user.id === currentUserId"
+          class="user-checkbox"
         >
-          {{ distance.label }}
+        
+        <div>{{ user.name }}</div>
+        
+        <div v-if="user.distance === null">Global</div>
+        <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+        <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+        
+        <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+        
+        <button 
+          v-if="user.id !== currentUserId" 
+          @click.stop="toggleFollow(user)"
+          :class="{ following: followedUserId === user.id }"
+          class="secondary"
+        >
+          {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
         </button>
       </div>
-      <button 
-        v-if="selectedUser" 
-        @click="pokeUser"
-        class="secondary"
-        :disabled="isPokeCooldown"
-      >
-        Poke {{ selectedUser.name }}
-      </button>
-      <button 
-        v-if="selectedUser" 
-        @click="sendLocation"
-        class="secondary"
-      >
-        Send Location to {{ selectedUser.name }}
-      </button>
+      
+      <!-- Group User List (shown when group exists) -->
+      <div v-if="groupUsers.length > 0">
+        <h3>Group Members</h3>
+        <div 
+          v-for="user in groupUsers" 
+          :key="user.id" 
+          class="user-list-item"
+          :class="{ selected: selectedUser?.id === user.id }"
+          :data-user-id="user.id"
+          @click="selectUser(user)"
+        >
+          <div>{{ user.name }}</div>
           
-        <div class="section" v-if="selectedUser">
-  <h3>Messages</h3>
+          <div v-if="user.distance === null">Global</div>
+          <div v-else-if="user.distance < 1000">{{ user.distance }}m</div>
+          <div v-else>{{ (user.distance/1000).toFixed(1) }}km</div>
+          
+          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
+          
+          <button 
+            v-if="user.id !== currentUserId" 
+            @click.stop="toggleFollow(user)"
+            :class="{ following: followedUserId === user.id }"
+            class="secondary"
+          >
+            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
+          </button>
+        </div>
+      </div>
+      
+      <!-- User Actions -->
+      <div class="button-group" v-if="selectedUser">
+        <button 
+          v-if="selectedUser && selectedUser.id" 
+          @click="pokeUser" 
+          class="secondary" 
+          :disabled="isPokeCooldown"
+        >
+          Poke {{ selectedUser.name }}
+        </button>
+        <button 
+          v-if="selectedUser" 
+          @click="sendLocation"
+          class="secondary"
+        >
+          Send Location to {{ selectedUser.name }}
+        </button>
+      </div>
+      
+      <div v-if="isPokeCooldown" class="poke-cooldown">
+        Poke available in {{ pokeCooldownSeconds }} seconds
+      </div>
+    </div>
+
+    <!-- Messages Section -->
+<div class="section" v-if="selectedUser">
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h3>Messages with {{ selectedUser.name }}</h3>
+    <button @click="selectedUser = null" class="secondary" style="margin-left: 10px;">Close</button>
+  </div>
+  <!-- Rest of the messages section remains the same -->
   <div v-if="!isSignedIn" class="message-signin-prompt">
     <p>Sign in to send messages to {{ selectedUser.name }}</p>
     <button @click="signIn" class="secondary">Sign In</button>
   </div>
-  <div v-else>
-    <div class="button-group">
-      <input 
-        type="text" 
-        v-model="messageText" 
-        placeholder="Type your message"
-        @keyup.enter="sendMessage"
-      >
-      <button @click="sendMessage" :disabled="!messageText">Send</button>
-      <button @click="clearMessages" class="warning">Clear All</button>
-    </div>
-  </div>
-  <div v-if="messages.length > 0" class="messages-container">
-    <div v-for="msg in messages" :key="msg.id" class="message">
-      <strong>{{ msg.from }}:</strong> {{ msg.text }}
-      <small>{{ formatRelativeTime(msg.timestamp) }}</small>
-      <button @click="deleteMessage(msg.id)" class="secondary" style="float: right; padding: 2px 5px; font-size: 0.8em;">×</button>
-    </div>
-  </div>
-</div>
-      <div v-if="isPokeCooldown" class="poke-cooldown">
-        Poke available in {{ pokeCooldownSeconds }} seconds
-      </div>
-      <div v-if="loadingNearby">Loading nearby users...</div>
-      <div v-if="!loadingNearby && nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000).length === 0 && !groupUsers.length">No users nearby</div>
-      <div v-if="groupUsers.length">
-        <div v-for="user in groupUsers" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }"
-             @click="selectUser(user)">
-          <div>{{ user.name }}</div>
-          <div v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div>{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
-        </div>
-      </div>
+              
       <div v-else>
-        <div v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
-             :key="user.id" 
-             class="user-list"
-             :class="{ selected: selectedUser?.id === user.id }">
+        <div class="button-group">
           <input 
-            type="checkbox" 
-            :value="user.id" 
-            v-model="selectedUsersForGroup" 
-            @click.stop 
-            :disabled="user.id === currentUserId"
+            type="text" 
+            v-model="messageText" 
+            placeholder="Type your message"
+            @keyup.enter="sendMessage"
           >
-          <div @click="selectUser(user)">{{ user.name }}</div>
-          <div @click="selectUser(user)" v-if="user.distance < 1000">{{ user.distance }}m away</div>
-          <div @click="selectUser(user)" v-else>{{ (user.distance/1000).toFixed(1) }}km away</div>
-          <div @click="selectUser(user)">{{ formatRelativeTime(user.lastSeen) }}</div>
-          <button 
-            v-if="user.id !== currentUserId" 
-            @click.stop="toggleFollow(user)"
-            :class="{ following: followedUserId === user.id }"
-            class="secondary"
-          >
-            {{ followedUserId === user.id ? 'Unfollow' : 'Follow' }}
-          </button>
+          <button @click="sendMessage" :disabled="!messageText">Send</button>
         </div>
       </div>
-      <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
+              
+      <div v-if="messages.length > 0" class="messages-container">
+        <div v-for="msg in messages" :key="msg.id" 
+             class="message" 
+             :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
+          <strong>{{ msg.from }}:</strong> {{ msg.text }}
+          <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+        </div>
+      </div>
     </div>
 
- <div class="debug-panel" :class="{ open: showDebugPanel }">
+    <!-- Debug Panel -->
+<div class="debug-panel" :class="{ open: showDebugPanel }">
   <button class="close-debug" @click="toggleDebugPanel">×</button>
   <h3>Debug Information</h3>
   <div>Firebase: {{ firebaseInitialized ? 'Connected' : 'Disconnected' }}</div>
   <div>User ID: {{ currentUserId || 'Not set' }}</div>
-  <div>Location: {{ userLocation ? 'Valid' : 'Invalid' }}</div>
+  <div>Location Status: {{ locationStatus }}</div>
+  <div v-if="userLocation">
+    GPS Coordinates: {{ userLocation[0].toFixed(6) }}, {{ userLocation[1].toFixed(6) }}
+  </div>
   <div>Last Update: {{ lastLocationUpdate ? new Date(lastLocationUpdate).toLocaleTimeString() : 'Never' }}</div>
   <div v-if="activeSoundProfiles.length > 0">
     Active sounds: 
@@ -681,8 +988,54 @@
       <option value="chromatic">Chromatic</option>
     </select>
   </div>
-  <button @click="forceRefresh">Force Refresh</button>
 </div>
+
+    <!-- Message Panel -->
+    <div class="message-panel" v-if="showMessagePanel">
+      <div class="message-panel-header">
+        <h3>Messages</h3>
+        <div>
+          <button @click="clearMessages" class="secondary" style="margin-right: 5px;">Clear</button>
+          <button @click="toggleMessagePanel" class="secondary">×</button>
+        </div>
+      </div>
+      <div class="message-panel-body">
+        <div class="message-recipient-selector">
+          <select v-model="messageRecipientType">
+            <option value="user">Send to User</option>
+            <option value="group" :disabled="!groupUsers.length">Send to Group</option>
+          </select>
+          <select v-if="messageRecipientType === 'user'" v-model="selectedMessageRecipient">
+            <option v-for="user in nearbyUsers.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)" 
+                    :value="user.id" 
+                    :key="user.id">
+              {{ user.name }}
+            </option>
+          </select>
+        </div>
+        <div class="messages-container">
+          <div v-for="msg in messages" :key="msg.id" 
+               class="message" 
+               :class="{ 'sent': msg.from === 'You', 'received': msg.from !== 'You' }">
+            <strong>{{ msg.from }}:</strong> {{ msg.text }}
+            <small>{{ formatRelativeTime(msg.timestamp) }}</small>
+          </div>
+        </div>
+      </div>
+      <div class="message-panel-footer">
+        <input 
+          type="text" 
+          v-model="panelMessageText" 
+          placeholder="Type your message"
+          @keyup.enter="sendPanelMessage"
+          style="width: calc(100% - 70px); margin-right: 5px;"
+        >
+        <button @click="sendPanelMessage" :disabled="!panelMessageText">Send</button>
+      </div>
+    </div>
+
+    <!-- Message alert sound (hidden) -->
+    <audio class="message-alert-sound" src="incmess.mp3" preload="auto"></audio>
 
   <script>
     const { createApp, ref, onMounted, watch, nextTick } = Vue;
@@ -714,6 +1067,66 @@
       }
     }
 
+function animateLogo() {
+  const canvas = document.querySelector('.logo-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const logoImg = document.querySelector('.logo-img');
+  let time = 0;
+  const duration = 5000; // Animation duration in ms (5 seconds)
+  const fadeDuration = 1000; // Fade-out duration in ms (1 second)
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  let radius = 40; // Starting radius
+  const minRadius = 10; // Radius when hitting the logo
+  const rotationSpeed = 2 * Math.PI / duration; // One full rotation over duration
+  const dotSize = 5; // Size of the dot
+  let alpha = 1; // Dot opacity for fade-out
+  let hasHit = false; // Track if dot has hit the logo
+
+  function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Calculate dot position
+    const angle = time < duration ? rotationSpeed * time : rotationSpeed * duration; // Stop rotation after duration
+    radius = time < duration ? minRadius + (40 - minRadius) * (1 - time / duration) : minRadius; // Reach minRadius
+    const x = centerX + radius * Math.cos(angle);
+    const y = centerY + radius * Math.sin(angle);
+
+    // Draw dot with fading opacity
+    ctx.beginPath();
+    ctx.arc(x, y, dotSize, 0, 2 * Math.PI);
+    ctx.fillStyle = `rgba(205, 97, 85, ${alpha})`; // #cd6155 with alpha
+    ctx.fill();
+
+    time += 16; // Approx 60 FPS
+
+    // Check if dot has reached the logo
+    if (time >= duration && !hasHit) {
+      hasHit = true;
+      logoImg.classList.add('color-changed');
+      setTimeout(() => {
+        logoImg.classList.remove('color-changed');
+      }, 800); // Color change lasts 0.5 seconds
+    }
+
+    // Fade out dot after hitting
+    if (hasHit) {
+      alpha -= 16 / fadeDuration; // Fade over ~1 second
+    }
+
+    // Continue drawing until dot is fully faded
+    if (!hasHit || alpha > 0) {
+      requestAnimationFrame(draw);
+    }
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// Call the animation once when DOM is loaded
+document.addEventListener('DOMContentLoaded', animateLogo);
+      
     const scales = {
       pentatonic: [0, 2, 4, 7, 9],
       major: [0, 2, 4, 5, 7, 9, 11],
@@ -740,12 +1153,14 @@
         const activeSoundProfiles = ref([]);
         const showAudioPermission = ref(true);
         const audioState = ref('Not initialized');
-        const distanceOptions = ref([
-          { label: '100m', value: 100 },
-          { label: '1km', value: 1000 },
-          { label: '50km', value: 50000 },
-          { label: '150km', value: 150000 },
-          { label: '500km', value: 500000 }
+      const distanceOptions = ref([
+  { label: '100m', value: 100, zoom: 18 },
+  { label: '1km', value: 1000, zoom: 15 },
+  { label: '50km', value: 50000, zoom: 11 },
+  { label: '150km', value: 150000, zoom: 9 },
+  { label: '500km', value: 500000, zoom: 7 },
+  { label: 'Global', value: Infinity, zoom: 3 }
+        
         ]);
         const selectedDistance = ref(1000);
         const locationStatus = ref('loading');
@@ -776,17 +1191,112 @@
         const userBeepIntervals = new Map();
         const userSoundProfiles = new Map();
         const colors = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f1c40f', '#1abc9c', '#e67e22'];
+          const messageAlert = ref(null); // { from: 'Name', fromId: 'uid' }
+const showMessageAlert = ref(false);
+
           
           const showDebugPanel = ref(false);
             const isSignedIn = ref(false);
   const messageText = ref('');
   const messages = ref([]);
-          const showNewMessageAlert = ref(false);
-const newMessageFrom = ref('');
-const messageCleanupInterval = ref(null);
+  const showMessagePanel = ref(false);
+  const unreadMessageCount = ref(0);
+  const panelMessageText = ref('');
+  const messageRecipientType = ref('user');
+  const selectedMessageRecipient = ref(null);
 
 function toggleDebugPanel() {
   showDebugPanel.value = !showDebugPanel.value;
+}
+
+function toggleMessagePanel() {
+  showMessagePanel.value = !showMessagePanel.value;
+  if (showMessagePanel.value) {
+    unreadMessageCount.value = 0;
+  }
+}
+
+async function clearMessages() {
+  messages.value = [];
+  if (currentUserId.value) {
+    try {
+      await db.collection('users').doc(currentUserId.value).update({
+        messages: firebase.firestore.FieldValue.delete()
+      });
+    } catch (error) {
+      console.error('Error clearing messages:', error);
+    }
+  }
+}
+
+async function sendPanelMessage() {
+  if (!panelMessageText.value.trim()) return;
+  if (!isSignedIn.value) {
+    errorMessage.value = 'Please sign in to send messages';
+    return;
+  }
+
+  if (messageRecipientType.value === 'group' && groupUsers.value.length > 0) {
+    // Send to group
+    const validGroupUsers = groupUsers.value.filter(
+      user => user.id !== currentUserId.value && user.id && user.name
+    );
+    
+    if (validGroupUsers.length === 0) {
+      errorMessage.value = 'No valid users in the group to send messages to';
+      return;
+    }
+
+    const promises = validGroupUsers.map(groupUser => {
+      return db.collection('users').doc(groupUser.id).update({
+        messages: firebase.firestore.FieldValue.arrayUnion({
+          from: user.value, // Use the sender's username
+          fromId: currentUserId.value,
+          text: panelMessageText.value,
+          timestamp: new Date().toISOString()
+        })
+      });
+    });
+
+    try {
+      await Promise.all(promises);
+      // Prepend the message to the beginning of the array
+      messages.value.unshift({
+        from: 'You',
+        text: panelMessageText.value,
+        timestamp: new Date().toISOString()
+      });
+      panelMessageText.value = '';
+      errorMessage.value = 'Group message sent successfully';
+    } catch (error) {
+      errorMessage.value = 'Failed to send group message: ' + error.message;
+    }
+  } else if (messageRecipientType.value === 'user' && selectedMessageRecipient.value) {
+    // Send to individual user
+    try {
+      await db.collection('users').doc(selectedMessageRecipient.value).update({
+        messages: firebase.firestore.FieldValue.arrayUnion({
+          from: user.value,
+          fromId: currentUserId.value,
+          text: panelMessageText.value,
+          timestamp: new Date().toISOString()
+        })
+      });
+      
+      // Prepend the message to the beginning of the array
+      messages.value.unshift({
+        from: 'You',
+        text: panelMessageText.value,
+        timestamp: new Date().toISOString()
+      });
+      panelMessageText.value = '';
+      errorMessage.value = 'Message sent successfully';
+    } catch (error) {
+      errorMessage.value = 'Failed to send message: ' + error.message;
+    }
+  } else {
+    errorMessage.value = 'Please select a valid recipient or group';
+  }
 }
 
         const pokeCooldownInterval = setInterval(() => {
@@ -801,6 +1311,29 @@ function toggleDebugPanel() {
             }
           }
         }, 200);
+          
+          
+          
+          function updateMapLocation(newLocation) {
+  if (!map || !newLocation) return;
+  
+  if (userMarker) {
+    userMarker.setLatLng(newLocation);
+  } else {
+    userMarker = L.marker(newLocation, {
+      icon: L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      })
+    }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
+  }
+  
+  if (!followedUserId.value) {
+    map.setView(newLocation, 18);
+  }
+}
+          
 
         function toggleHelp() {
           showHelp.value = !showHelp.value;
@@ -871,6 +1404,21 @@ function toggleDebugPanel() {
             }
           });
         }
+          
+          // Helper functions for localStorage
+function getStoredUsername() {
+  return localStorage.getItem('sly_username');
+}
+
+function storeUsername(username) {
+  if (username) {
+    localStorage.setItem('sly_username', username);
+  }
+}
+
+function clearStoredUsername() {
+  localStorage.removeItem('sly_username');
+}
 
         function playAlertSound() {
           if (!audioContext || audioContext.state !== 'running') return;
@@ -993,10 +1541,7 @@ function toggleDebugPanel() {
               if (soundEnabled.value) {
                 updateUserBeeps();
               }
-            }).catch(error => {
-              console.error('Failed to resume AudioContext:', error);
-              audioState.value = 'Resume failed';
-            });
+            }).catch(console.error);
           }
         }
 
@@ -1090,6 +1635,19 @@ function toggleDebugPanel() {
           }
         }
 
+        function playMessageSound() {
+          if (!soundEnabled.value) return;
+          try {
+            const audio = document.querySelector('.message-alert-sound');
+            if (audio) {
+              audio.currentTime = 0;
+              audio.play().catch(e => console.log('Audio play prevented:', e));
+            }
+          } catch (error) {
+            console.error('Message sound error:', error);
+          }
+        }
+
         function updateUserBeeps() {
           console.log('[updateUserBeeps] Running...');
           userBeepIntervals.forEach((interval, userId) => {
@@ -1147,47 +1705,53 @@ function toggleDebugPanel() {
           }
         }, 3000);
 
-        function initMap(location) {
-          try {
-            nextTick(() => {
-              if (!document.getElementById('map')) {
-                throw new Error('Map container not found');
-              }
-              map = L.map('map').setView(location, 18);
-              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-                maxZoom: 19
-              }).addTo(map);
-              userMarker = L.marker(location, {
-                icon: L.divIcon({
-                  html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-                  className: 'user-marker blinking-marker',
-                  iconSize: [20, 20]
-                })
-              }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
-              mapInitialized.value = true;
-            });
-          } catch (error) {
-            errorMessage.value = 'Map initialization failed: ' + error.message;
-          }
+// Modify your initMap function:
+function initMap(location, retries = 3, delay = 1000) {
+  return new Promise((resolve) => {
+    const tryInit = (attempt) => {
+      const mapContainer = document.getElementById('map');
+      
+      if (!mapContainer) {
+        if (attempt < retries) {
+          setTimeout(() => tryInit(attempt + 1), delay);
+          return;
+        }
+        errorMessage.value = 'Map container not found in DOM';
+        console.error('Map container not found after retries');
+        resolve(false);
+        return;
+      }
+
+      try {
+        if (map) {
+          map.setView(location, 18);
+          resolve(true);
+          return;
         }
 
-        function updateMapLocation(location) {
-          if (map) {
-            if (!followedUserId.value) {
-              map.setView(location, map.getZoom());
-            }
-            if (userMarker) {
-              userMarker.setLatLng(location);
-            }
-          } else {
-            initMap(location);
-          }
-          if (map) {
-            map.invalidateSize();
-          }
-        }
+        map = L.map('map').setView(location, 18);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap contributors',
+          maxZoom: 19
+        }).addTo(map);
 
+        mapInitialized.value = true;
+        setTimeout(() => map.invalidateSize(), 100);
+        resolve(true);
+      } catch (err) {
+        console.error('Map init error:', err);
+        if (attempt < retries) {
+          setTimeout(() => tryInit(attempt + 1), delay);
+        } else {
+          errorMessage.value = 'Map initialization failed';
+          resolve(false);
+        }
+      }
+    };
+
+    tryInit(0);
+  });
+}
         function selectUser(user) {
           selectedUser.value = user;
           if (selectedUserMarker && map) {
@@ -1243,64 +1807,70 @@ function toggleDebugPanel() {
           updateNearbyMarkers();
         }
 
-        function focusOnMyLocation() {
-          if (map && userLocation.value) {
-            map.setView(userLocation.value, 18);
-            selectedUser.value = null;
-            followedUserId.value = null;
-            followedUserName.value = '';
-            followedUserLocation.value = null;
-            if (selectedUserMarker) {
-              map.removeLayer(selectedUserMarker);
-              selectedUserMarker = null;
-            }
-            if (userMarker) {
-              userMarker.setIcon(L.divIcon({
-                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker blinking-marker',
-                iconSize: [20, 20]
-              }));
-              userMarker.addTo(map).bringToFront();
-            }
-          }
-          if (soundEnabled.value && audioContext && audioContext.state === 'running') {
-            updateUserBeeps();
-          }
-          updateNearbyMarkers();
-        }
+function focusOnMyLocation() {
+  if (map && userLocation.value) {
+    const option = distanceOptions.value.find(opt => opt.value === selectedDistance.value);
+    const zoomLevel = option ? option.zoom : 18;
+    map.setView(userLocation.value, zoomLevel);
+    selectedUser.value = null;
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+    if (selectedUserMarker) {
+      map.removeLayer(selectedUserMarker);
+      selectedUserMarker = null;
+    }
+    if (userMarker) {
+      userMarker.setIcon(L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      }));
+      userMarker.addTo(map).bringToFront();
+    }
+  }
+  if (soundEnabled.value && audioContext && audioContext.state === 'running') {
+    updateUserBeeps();
+  }
+  updateNearbyMarkers();
+}
 
         function updateNearbyMarkers() {
-          if (!map) return;
-          nearbyMarkers.forEach(marker => map.removeLayer(marker));
-          nearbyMarkers = [];
-          const usersToDisplay = groupUsers.value.length 
-            ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
-            : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
-          nearbyMarkers = usersToDisplay.map((user, index) => {
-            const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
-            return L.marker([user.latitude, user.longitude], {
-              icon: L.divIcon({
-                html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker',
-                iconSize: [20, 20]
-              })
-            }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${user.distance < 1000 ? user.distance + 'm' : (user.distance/1000).toFixed(1) + 'km'} away`);
-          });
-          if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
-            followedUserId.value = null;
-            followedUserName.value = '';
-            followedUserLocation.value = null;
-            if (map && userLocation.value) {
-              map.setView(userLocation.value, 18);
-            }
-            if (selectedUserMarker) {
-              map.removeLayer(selectedUserMarker);
-              selectedUserMarker = null;
-            }
-            selectedUser.value = null;
-          }
-        }
+  if (!map) return;
+  nearbyMarkers.forEach(marker => map.removeLayer(marker));
+  nearbyMarkers = [];
+  const usersToDisplay = groupUsers.value.length 
+    ? groupUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000)
+    : nearbyUsers.value.filter(u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000);
+  
+  nearbyMarkers = usersToDisplay.map((user, index) => {
+    const color = followedUserId.value === user.id ? '#007bff' : colors[index % colors.length];
+    const distanceText = user.distance === null ? 'Global user' : 
+                         (user.distance < 1000 ? `${user.distance}m` : `${(user.distance/1000).toFixed(1)}km`);
+    
+    return L.marker([user.latitude, user.longitude], {
+      icon: L.divIcon({
+        html: `<div style="background-color: ${color}; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.name.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker',
+        iconSize: [20, 20]
+      })
+    }).addTo(map).bindPopup(`<b>${user.name}</b>${followedUserId.value === user.id ? ' (Following)' : ''}<br>${distanceText} away`);
+  });
 
+  if (followedUserId.value && !usersToDisplay.find(u => u.id === followedUserId.value)) {
+    followedUserId.value = null;
+    followedUserName.value = '';
+    followedUserLocation.value = null;
+    if (map && userLocation.value) {
+      map.setView(userLocation.value, 18);
+    }
+    if (selectedUserMarker) {
+      map.removeLayer(selectedUserMarker);
+      selectedUserMarker = null;
+    }
+    selectedUser.value = null;
+  }
+}
         async function pokeUser() {
           if (!selectedUser.value || isPokeCooldown.value) return;
           try {
@@ -1324,7 +1894,7 @@ function toggleDebugPanel() {
           const onlineUsers = nearbyUsers.value.filter(
             u => u.status === 'ONLINE' && (Date.now() - Date.parse(u.lastSeen)) < 3600000
           );
-          groupUsers.value = onlineUsers.filter(user => selectedUsersForGroup.value.includes(user.id));
+   groupUsers.value = onlineUsers.filter(user => selectedUsersForGroup.value.includes(user.id) && user && user.id && user.name);
           selectedUsersForGroup.value = [];
           updateNearbyMarkers();
           if (soundEnabled.value && audioContext && audioContext.state === 'running') {
@@ -1341,10 +1911,10 @@ function toggleDebugPanel() {
           }
         }
 
-        watch(userLocation, (newLocation) => {
-          if (!newLocation) return;
-          updateMapLocation(newLocation);
-        }, { immediate: true });
+ watch(userLocation, (newLocation) => {
+  if (!newLocation) return;
+  updateMapLocation(newLocation);
+}, { immediate: true });
 
         watch(nearbyUsers, () => {
           if (!groupUsers.value.length) {
@@ -1376,24 +1946,26 @@ function toggleDebugPanel() {
           }
         });
 
-      onMounted(() => {
+  onMounted(() => {
   firebaseInitialized.value = initializeFirebase();
   if (!firebaseInitialized.value) {
     errorMessage.value = 'Failed to initialize Firebase. Please check your network or Firebase configuration.';
     return;
   }
   initAudio();
+  getUserLocation();
   // Initialize map with default location
   initMap([0, 0]); // Default to [0, 0] with low zoom
   // Attempt to get user location
   getUserLocation();
 
-  auth.onAuthStateChanged((userData) => {
-    if (userData) {
-      isSignedIn.value = true;
-      currentUserId.value = userData.uid;
-      user.value = userData.displayName || 'Anonymous';
-      loadMessages();
+auth.onAuthStateChanged((userData) => {
+  if (userData) {
+    isSignedIn.value = true;
+    currentUserId.value = userData.uid;
+    // Use stored username if available, otherwise use displayName or 'Anonymous'
+    user.value = getStoredUsername() || userData.displayName || 'Anonymous';
+    loadMessages();
       db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
         if (!doc.exists) {
           console.warn('User document does not exist');
@@ -1456,65 +2028,42 @@ function toggleDebugPanel() {
       }
     }
   });
-  messageCleanupInterval.value = setInterval(checkForOldMessages, 60000); // Check every minute
 });
 
-function initMap(location) {
-  try {
-    nextTick(() => {
-      if (!document.getElementById('map')) {
-        throw new Error('Map container not found');
-      }
-      map = L.map('map').setView(location, location[0] === 0 && location[1] === 0 ? 2 : 18);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19
-      }).addTo(map);
-      if (user.value && location[0] !== 0 && location[1] !== 0) {
-        userMarker = L.marker(location, {
-          icon: L.divIcon({
-            html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
-            className: 'user-marker blinking-marker',
-            iconSize: [20, 20]
-          })
-        }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
-      }
-      mapInitialized.value = true;
-      map.invalidateSize();
-    });
-  } catch (error) {
-    errorMessage.value = 'Map initialization failed: ' + error.message;
-  }
-}
+function initMap(location, retries = 3, delay = 1000) {
+  waitForLeaflet(() => {
+    try {
+      nextTick(() => {
+        if (!document.getElementById('map')) {
+          if (retries > 0) {
+            console.warn(`Map container not found, retrying ${retries} more times`);
+            setTimeout(() => initMap(location, retries - 1, delay), delay);
+            return;
+          }
+          console.error('Map container not found after retries');
+          errorMessage.value = 'Map container not found in DOM';
+          return;
+        }
+        if (map) {
+          console.warn('Map already initialized, updating location');
+          map.setView(location, 18);
+          map.invalidateSize();
+          return;
+        }
 
-function getUserLocation() {
-  if (!navigator.geolocation) {
-    errorMessage.value = 'Geolocation is not supported by your browser';
-    locationStatus.value = 'unavailable';
-    return;
-  }
-  locationStatus.value = 'loading';
-  const timeoutDuration = 10000;
-  const geoTimeout = setTimeout(() => {
-    if (!userLocation.value) {
-      locationStatus.value = 'unavailable';
-      errorMessage.value = 'Location not available';
-    }
-  }, timeoutDuration);
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      clearTimeout(geoTimeout);
-      userLocation.value = [position.coords.latitude, position.coords.longitude];
-      lastLocationUpdate.value = Date.now();
-      locationStatus.value = 'acquired';
-      errorMessage.value = '';
-      updateUserLocation();
-      if (map) {
-        map.setView(userLocation.value, 18);
-        if (userMarker) {
-          userMarker.setLatLng(userLocation.value);
-        } else if (user.value) {
-          userMarker = L.marker(userLocation.value, {
+        const initialLocation = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1]))
+          ? location
+          : [51.505, -0.09];
+        const initialZoom = (location && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) ? 18 : 13;
+
+        map = L.map('map').setView(initialLocation, initialZoom);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+          maxZoom: 19
+        }).addTo(map);
+
+        if (user.value && isValidCoordinate(location[0]) && isValidCoordinate(location[1])) {
+          userMarker = L.marker(location, {
             icon: L.divIcon({
               html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${user.value.charAt(0).toUpperCase()}</div>`,
               className: 'user-marker blinking-marker',
@@ -1522,35 +2071,34 @@ function getUserLocation() {
             })
           }).addTo(map).bindPopup(`<b>${user.value}</b><br>Your location`);
         }
-        map.invalidateSize();
-      }
-      if (status.value === 'ONLINE') fetchNearbyUsers();
-    },
-    (error) => {
-      clearTimeout(geoTimeout);
-      locationStatus.value = 'unavailable';
-      if (error.code === error.PERMISSION_DENIED) {
-        errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
-      } else if (error.message.includes('permissions policy')) {
-        errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
-      } else {
-        errorMessage.value = 'Location not available';
-      }
-    },
-    { timeout: timeoutDuration, enableHighAccuracy: true }
-  );
-}
 
-   //  signIn function
-  async function signIn() {
-    try {
-      await auth.signInAnonymously();
-      isSignedIn.value = true;
-      console.log('Signed in anonymously');
+        mapInitialized.value = true;
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 100);
+      });
     } catch (error) {
-      errorMessage.value = 'Sign-in failed: ' + error.message;
+      console.error('Map initialization failed:', error);
+      if (retries > 0) {
+        console.warn(`Retrying map initialization, ${retries} attempts left`);
+        setTimeout(() => initMap(location, retries - 1, delay), delay);
+      } else {
+        errorMessage.value = 'Map initialization failed after retries: ' + error.message;
+      }
     }
+  });
+}
+      
+async function signIn() {
+  try {
+    await auth.signInAnonymously();
+    isSignedIn.value = true;
+    console.log('Signed in anonymously');
+    getUserLocation();
+  } catch (error) {
+    errorMessage.value = 'Sign-in failed: ' + error.message;
   }
+}
   
   // signOut function
 async function signOut() {
@@ -1558,12 +2106,8 @@ async function signOut() {
     await auth.signOut();
     isSignedIn.value = false;
     messages.value = [];
-         if (messageCleanupInterval.value) {
-      clearInterval(messageCleanupInterval.value);
-      messageCleanupInterval.value = null;
-    }
-
-    // 💥 Reset map
+    clearStoredUsername(); // Clear the stored username
+    
     if (map) {
       map.remove();
       map = null;
@@ -1577,7 +2121,6 @@ async function signOut() {
       mapInitialized.value = false;
     }
 
-    // Reset user state that may prevent re-init
     user.value = null;
     currentUserId.value = null;
     status.value = 'OFFLINE';
@@ -1588,67 +2131,114 @@ async function signOut() {
   }
 }
 
+      function waitForLeaflet(callback) {
+  if (typeof L !== 'undefined') {
+    callback();
+    return;
+  }
+  const script = document.querySelector('script[src*="leaflet"]');
+  if (script) {
+    script.addEventListener('load', callback);
+  } else {
+    setTimeout(() => waitForLeaflet(callback), 100);
+  }
+}
   
   //  sendMessage function
-  async function sendMessage() {
-    if (!selectedUser.value || !messageText.value.trim()) return;
-    
-    try {
-      await db.collection('users').doc(selectedUser.value.id).update({
-        messages: firebase.firestore.FieldValue.arrayUnion({
-          from: user.value,
-          fromId: currentUserId.value,
-          text: messageText.value,
-          timestamp: new Date().toISOString()
-        })
-      });
-      
-      messages.value.push({
-        from: 'You',
+async function sendMessage() {
+  if (!selectedUser.value || !messageText.value.trim()) return;
+  
+  try {
+    await db.collection('users').doc(selectedUser.value.id).update({
+      messages: firebase.firestore.FieldValue.arrayUnion({
+        from: user.value,
+        fromId: currentUserId.value,
         text: messageText.value,
         timestamp: new Date().toISOString()
-      });
-      
-      messageText.value = '';
-    } catch (error) {
-      errorMessage.value = "Failed to send message: " + error.message;
-    }
+      })
+    });
+    
+    // Prepend the message to the beginning of the array
+    messages.value.unshift({
+      from: 'You',
+      text: messageText.value,
+      timestamp: new Date().toISOString()
+    });
+    
+    messageText.value = '';
+  } catch (error) {
+    errorMessage.value = "Failed to send message: " + error.message;
   }
+}
   
   //  loadMessages function
 function loadMessages() {
   if (!currentUserId.value) return;
-  
+
   db.collection('users').doc(currentUserId.value).onSnapshot((doc) => {
     if (doc.exists) {
       const data = doc.data();
       if (data.messages) {
-        const newMessages = data.messages
+        // Sort messages in descending order (newest first)
+        const sortedMessages = [...data.messages].sort((a, b) => 
+          new Date(b.timestamp) - new Date(a.timestamp)
+        );
+
+        const newIncoming = sortedMessages
           .filter(msg => msg.fromId !== currentUserId.value)
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .slice(0, 20);
-        
-        // Check if there are new messages
-        if (newMessages.length > messages.value.length) {
-          const latestMessage = newMessages[0];
-          if (!messages.value.some(msg => msg.id === latestMessage.id)) {
-            showNewMessageAlert.value = true;
-            newMessageFrom.value = latestMessage.from;
-            if (soundEnabled.value) playMessageSound();
-            
-            // Auto-hide alert after 5 seconds
-            setTimeout(() => {
-              showNewMessageAlert.value = false;
-            }, 5000);
+          .filter(msg => !messages.value.some(existing => 
+            existing.timestamp === msg.timestamp));
+
+        if (newIncoming.length > 0) {
+          const latest = newIncoming[0]; // Get the first item (newest)
+          messageAlert.value = { from: latest.from, fromId: latest.fromId };
+          showMessageAlert.value = true;
+
+          if (!showMessagePanel.value) {
+            unreadMessageCount.value += newIncoming.length;
           }
+
+          setTimeout(() => {
+            showMessageAlert.value = false;
+          }, 7000);
+
+          flashUser(latest.fromId);
+          playMessageSound();
         }
-        
-        messages.value = newMessages;
-        checkForOldMessages();
+
+        // Keep messages in reverse order (newest first)
+        messages.value = [
+          ...sortedMessages.filter(m => m.fromId !== currentUserId.value),
+          ...messages.value.filter(m => m.from === 'You')
+        ].slice(0, 20); // Keep only the 20 most recent messages
       }
     }
   });
 }
+
+      function dismissMessageAlert() {
+  showMessageAlert.value = false;
+  if (messageAlert.value && messageAlert.value.fromId) {
+    const user = nearbyUsers.value.find(u => u.id === messageAlert.value.fromId);
+    if (user) {
+      selectUser(user);
+    }
+  }
+  messageAlert.value = null;
+}
+
+      
+function flashUser(userId) {
+  nextTick(() => {
+    const el = document.querySelector(`[data-user-id="${userId}"]`);
+    if (el) {
+      el.classList.add('flash-user');
+      setTimeout(() => el.classList.remove('flash-user'), 5000);
+    }
+  });
+}
+
+
   
   //  clearOldMessages function
   async function clearOldMessages() {
@@ -1662,109 +2252,58 @@ function loadMessages() {
       console.error('Error clearing messages:', error);
     }
   }
+  
+
+// Modify your getUserLocation() function to:
+function getUserLocation() {
+  if (!navigator.geolocation) {
+    errorMessage.value = 'Geolocation is not supported by your browser';
+    locationStatus.value = 'unavailable';
+    return;
+  }
+  
+  locationStatus.value = 'loading';
+  
+  const options = {
+    enableHighAccuracy: true,
+    timeout: 10000,
+    maximumAge: 0
+  };
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      // Success handler
+      userLocation.value = [position.coords.latitude, position.coords.longitude];
+      locationStatus.value = 'acquired';
+      errorMessage.value = '';
+      updateUserLocation();
       
-      function playMessageSound() {
-  if (!audioContext || !soundEnabled.value || audioContext.state !== 'running') return;
-  
-  try {
-    const osc = audioContext.createOscillator();
-    const gain = audioContext.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 1200;
-    gain.gain.value = 0.3;
-    gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-    osc.connect(gain).connect(audioContext.destination);
-    osc.start();
-    osc.stop(audioContext.currentTime + 0.5);
-  } catch (error) {
-    console.error('Message sound error:', error);
-  }
+      if (!map) {
+        initMap(userLocation.value);
+      }
+    },
+    (error) => {
+      locationStatus.value = 'unavailable';
+      switch(error.code) {
+        case error.PERMISSION_DENIED:
+          errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
+          // Initialize map with default location
+          initMap([51.505, -0.09]); // London coordinates as fallback
+          break;
+        case error.POSITION_UNAVAILABLE:
+          errorMessage.value = 'Location information is unavailable.';
+          break;
+        case error.TIMEOUT:
+          errorMessage.value = 'The request to get user location timed out.';
+          break;
+        default:
+          errorMessage.value = 'An unknown error occurred.';
+          break;
+      }
+    },
+    options
+  );
 }
-
-async function clearMessages() {
-  if (!currentUserId.value) return;
-  
-  try {
-    await db.collection('users').doc(currentUserId.value).update({
-      messages: firebase.firestore.FieldValue.delete()
-    });
-    messages.value = [];
-  } catch (error) {
-    errorMessage.value = "Failed to clear messages: " + error.message;
-  }
-}
-
-async function deleteMessage(messageId) {
-  if (!currentUserId.value) return;
-  
-  try {
-    const userDoc = await db.collection('users').doc(currentUserId.value).get();
-    if (userDoc.exists) {
-      const currentMessages = userDoc.data().messages || [];
-      const updatedMessages = currentMessages.filter(msg => msg.id !== messageId);
-      await db.collection('users').doc(currentUserId.value).update({
-        messages: updatedMessages
-      });
-    }
-  } catch (error) {
-    errorMessage.value = "Failed to delete message: " + error.message;
-  }
-}
-
-function checkForOldMessages() {
-  const now = new Date();
-  messages.value = messages.value.filter(msg => {
-    const msgTime = new Date(msg.timestamp);
-    return (now - msgTime) < 15 * 60 * 1000; // 15 minutes
-  });
-}
-  
-
-        function getUserLocation() {
-          if (!navigator.geolocation) {
-            errorMessage.value = 'Geolocation is not supported by your browser';
-            locationStatus.value = 'unavailable';
-            return;
-          }
-          locationStatus.value = 'loading';
-          const timeoutDuration = 10000;
-          const geoTimeout = setTimeout(() => {
-            if (!userLocation.value) {
-              locationStatus.value = 'unavailable';
-              errorMessage.value = 'Location not available or waiting to load map';
-            }
-          }, timeoutDuration);
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              clearTimeout(geoTimeout);
-              userLocation.value = [position.coords.latitude, position.coords.longitude];
-              lastLocationUpdate.value = Date.now();
-              locationStatus.value = 'acquired';
-              errorMessage.value = '';
-              updateUserLocation();
-              
-              if (map) {
-                map.setView(userLocation.value, 18);
-              } else {
-                initMap(userLocation.value);
-              }
-              
-              if (status.value === 'ONLINE') fetchNearbyUsers();
-            },
-            (error) => {
-              clearTimeout(geoTimeout);
-              locationStatus.value = 'unavailable';
-              if (error.code === error.PERMISSION_DENIED) {
-                errorMessage.value = 'Location access denied. Please enable location services in your browser settings.';
-              } else if (error.message.includes('permissions policy')) {
-                errorMessage.value = 'Geolocation is disabled by browser permissions policy. Please serve this app over HTTPS or check browser settings.';
-              } else {
-                errorMessage.value = 'Location not available or waiting to load map';
-              }
-            },
-            { timeout: timeoutDuration, enableHighAccuracy: true }
-          );
-        }
 
         async function updateUserLocation() {
           if (currentUserId.value && userLocation.value) {
@@ -1843,29 +2382,38 @@ function checkForOldMessages() {
           }
         }
 
-        function selectDistance(distance) {
-          selectedDistance.value = distance;
-          if (status.value === 'ONLINE') {
-            fetchNearbyUsers();
-          }
-        }
+     function selectDistance(distance) {
+  selectedDistance.value = distance;
+  if (status.value === 'ONLINE') {
+    fetchNearbyUsers();
+  }
+  // Update map zoom if we have a location
+  if (map && userLocation.value) {
+    const option = distanceOptions.value.find(opt => opt.value === distance);
+    if (option) {
+      map.setView(userLocation.value, option.zoom);
+    }
+  }
+}
 
-        async function changeName() {
-          const newName = prompt('Enter new name:', user.value);
-          if (newName) {
-            user.value = newName;
-            lastKnownUsernames.value[currentUserId.value] = newName;
-            await updateUserLocation();
-            if (userMarker) {
-              userMarker.setIcon(L.divIcon({
-                html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${newName.charAt(0).toUpperCase()}</div>`,
-                className: 'user-marker blinking-marker',
-                iconSize: [20, 20]
-              }));
-              userMarker.bindPopup(`<b>${newName}</b><br>Your location`);
-            }
-          }
-        }
+async function changeName() {
+  const currentName = user.value || getStoredUsername();
+  const newName = prompt('Enter new name:', currentName);
+  if (newName) {
+    user.value = newName;
+    storeUsername(newName); // Store in localStorage
+    lastKnownUsernames.value[currentUserId.value] = newName;
+    await updateUserLocation();
+    if (userMarker) {
+      userMarker.setIcon(L.divIcon({
+        html: `<div style="background-color: #ff0000; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">${newName.charAt(0).toUpperCase()}</div>`,
+        className: 'user-marker blinking-marker',
+        iconSize: [20, 20]
+      }));
+      userMarker.bindPopup(`<b>${newName}</b><br>Your location`);
+    }
+  }
+}
 
         function calculateDistance(coord1, coord2) {
           const R = 6371e3;
@@ -1880,50 +2428,58 @@ function checkForOldMessages() {
           return R * c;
         }
 
-        async function fetchNearbyUsers() {
-          if (!userLocation.value) {
-            errorMessage.value = 'Location not available';
-            return;
-          }
-          nearbyUsers.value = [];
-          loadingNearby.value = true;
-          try {
-            const q = db.collection('users').where('status', '==', 'ONLINE');
-            q.onSnapshot((snapshot) => {
-              const currentUsers = snapshot.docs
-                .filter(doc => {
-                  const data = doc.data();
-                  return doc.id !== currentUserId.value && 
-                         isValidCoordinate(data.latitude) && 
-                         isValidCoordinate(data.longitude);
-                })
-                .map(doc => {
-                  const data = doc.data();
-                  const distance = calculateDistance(userLocation.value, [data.latitude, data.longitude]);
-                  const userName = lastKnownUsernames.value[doc.id] || data.name;
-                  return { 
-                    id: doc.id, 
-                    name: userName, 
-                    distance, 
-                    lastSeen: data.lastSeen,
-                    latitude: data.latitude,
-                    longitude: data.longitude,
-                    status: data.status
-                  };
-                })
-                .filter(user => user.distance < selectedDistance.value && user.status === 'ONLINE' && (Date.now() - Date.parse(user.lastSeen)) < 3600000);
-              nearbyUsers.value = currentUsers;
-              loadingNearby.value = false;
-              updateNearbyMarkers();
-            }, (error) => {
-              errorMessage.value = 'Failed to load nearby users: ' + error.message;
-              loadingNearby.value = false;
-            });
-          } catch (error) {
-            errorMessage.value = 'Failed to query nearby users: ' + error.message;
-            loadingNearby.value = false;
-          }
-        }
+ async function fetchNearbyUsers() {
+  if (!userLocation.value && selectedDistance.value !== Infinity) {
+    errorMessage.value = 'Location not available';
+    return;
+  }
+  nearbyUsers.value = [];
+  loadingNearby.value = true;
+  try {
+    const q = db.collection('users').where('status', '==', 'ONLINE');
+    q.onSnapshot((snapshot) => {
+      const currentUsers = snapshot.docs
+        .filter(doc => {
+          const data = doc.data();
+          return doc.id !== currentUserId.value && 
+                 isValidCoordinate(data.latitude) && 
+                 isValidCoordinate(data.longitude);
+        })
+        .map(doc => {
+          const data = doc.data();
+          const distance = selectedDistance.value === Infinity ? 
+            null : 
+            calculateDistance(userLocation.value, [data.latitude, data.longitude]);
+          const userName = lastKnownUsernames.value[doc.id] || data.name;
+          return { 
+            id: doc.id, 
+            name: userName, 
+            distance, 
+            lastSeen: data.lastSeen,
+            latitude: data.latitude,
+            longitude: data.longitude,
+            status: data.status
+          };
+        })
+        .filter(user => 
+          (selectedDistance.value === Infinity || 
+           (user.distance < selectedDistance.value)) && 
+          user.status === 'ONLINE' && 
+          (Date.now() - Date.parse(user.lastSeen)) < 3600000
+        );
+      
+      nearbyUsers.value = currentUsers.filter(user => user && user.id && user.name);
+      loadingNearby.value = false;
+      updateNearbyMarkers();
+    }, (error) => {
+      errorMessage.value = 'Failed to load nearby users: ' + error.message;
+      loadingNearby.value = false;
+    });
+  } catch (error) {
+    errorMessage.value = 'Failed to query nearby users: ' + error.message;
+    loadingNearby.value = false;
+  }
+}
 
         async function cleanInvalidUserLocations() {
           try {
@@ -1946,18 +2502,18 @@ function checkForOldMessages() {
           }
         }
 
-        function processUserData(userData) {
-          if (!userData || !isValidCoordinate(userData.latitude) || !isValidCoordinate(userData.longitude)) {
-            console.warn('Invalid user location data:', userData);
-            return null;
-          }
-          return {
-            id: userData.id,
-            name: userData.name || 'Anonymous',
-            latitude: userData.latitude,
-            longitude: userData.longitude,
-          };
-        }
+     function processUserData(userData) {
+  if (!userData || !isValidCoordinate(userData.latitude) || !isValidCoordinate(userData.longitude)) {
+    console.warn('Invalid user location data:', userData);
+    return null;
+  }
+  return {
+    id: userData.id,
+    name: userData.name || 'Anonymous',
+    latitude: userData.latitude,
+    longitude: userData.longitude,
+  };
+}
 
         function isValidCoordinate(coord) {
           return typeof coord === 'number' && 
@@ -2048,18 +2604,72 @@ function checkForOldMessages() {
             showDebugPanel,
             toggleDebugPanel,
               isSignedIn,
-            showNewMessageAlert,
-newMessageFrom,
-
+              getStoredUsername,
+  storeUsername,
+  clearStoredUsername,
     messageText,
     messages,
     signIn,
     signOut,
-    sendMessage
-            
+    sendMessage,
+    showMessagePanel,
+    toggleMessagePanel,
+    unreadMessageCount,
+    clearMessages,
+    panelMessageText,
+    sendPanelMessage,
+    messageRecipientType,
+    selectedMessageRecipient,
+    messageAlert,
+    showMessageAlert,
+    dismissMessageAlert
         };
       }
     }).mount('#app');
+      
+        document.addEventListener('DOMContentLoaded', function() {
+    const { createApp, ref, onMounted, watch, nextTick } = Vue;
+    
+    // Rest of your existing script...
+    
+    // Modify the initMap function to remove the waitForLeaflet wrapper
+    function initMap(location, retries = 3, delay = 1000) {
+      try {
+        if (!document.getElementById('map')) {
+          if (retries > 0) {
+            console.warn(`Map container not found, retrying ${retries} more times`);
+            setTimeout(() => initMap(location, retries - 1, delay), delay);
+            return;
+          }
+          console.error('Map container not found after retries');
+          errorMessage.value = 'Map container not found in DOM';
+          return;
+        }
+        
+        // Rest of your existing initMap code...
+      } catch (error) {
+        console.error('Map initialization failed:', error);
+        if (retries > 0) {
+          console.warn(`Retrying map initialization, ${retries} attempts left`);
+          setTimeout(() => initMap(location, retries - 1, delay), delay);
+        } else {
+          errorMessage.value = 'Map initialization failed after retries: ' + error.message;
+        }
+      }
+    }
+ // Rest of your existing script...
+  });
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(registration => {
+        console.log('ServiceWorker registration successful');
+      })
+      .catch(err => {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+  });
+}
   </script>
 </body>
 </html>
